@@ -1,0 +1,19 @@
+# Core app
+streamlit>=1.45,<2.0
+pandas>=2.2,<3.0
+openpyxl>=3.1,<4.0
+python-dotenv>=1.0,<2.0
+
+# LLM providers
+openai>=1.75,<2.0
+anthropic>=0.49,<1.0
+
+# Database
+sqlalchemy>=2.0,<3.0
+psycopg[binary]>=3.2,<4.0
+
+# Utilities
+rich>=13.0,<14.0
+
+# Dev / test (not installed in Docker image — see Dockerfile)
+# pytest>=8.0
