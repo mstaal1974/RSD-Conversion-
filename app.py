@@ -28,7 +28,7 @@ from dotenv import load_dotenv
 from core.extractor import normalize_training_package_csv, build_registry, content_fingerprint
 from core.bart_generator import generate_skill_statement
 from core.keyword_generator import generate_keywords
-from core.exporters import to_rsd_rows, to_traceability
+from core.exporters import to_rsd_rows, to_traceability, to_osmt_rows
 from core.providers import OpenAIProvider, AnthropicProvider, with_fallback
 from core.providers.openai_provider import OpenAIProvider as _OAI
 from core.providers.anthropic_provider import AnthropicProvider as _ANT
@@ -307,11 +307,13 @@ if db_ready and run_id:
         db_df = fetch_run_records(engine, run_id)
         if len(db_df):
             st.dataframe(db_df[["row_index","unit_code","element_title","qa_passes"]].head(50), use_container_width=True)
-            _rsd = to_rsd_rows(db_df)
-            _tr  = to_traceability(db_df)
-            c1, c2 = st.columns(2)
-            c1.download_button("⬇ Partial RSD CSV", _rsd.to_csv(index=False).encode(), "rsd_partial.csv", "text/csv")
-            c2.download_button("⬇ Partial traceability CSV", _tr.to_csv(index=False).encode(), "traceability_partial.csv", "text/csv")
+            _rsd  = to_rsd_rows(db_df)
+            _tr   = to_traceability(db_df)
+            _osmt = to_osmt_rows(db_df)
+            c1, c2, c3 = st.columns(3)
+            c1.download_button("⬇ Partial OSMT CSV", _osmt.to_csv(index=False).encode(), "osmt_partial.csv", "text/csv")
+            c2.download_button("⬇ Partial RSD CSV", _rsd.to_csv(index=False).encode(), "rsd_partial.csv", "text/csv")
+            c3.download_button("⬇ Partial traceability CSV", _tr.to_csv(index=False).encode(), "traceability_partial.csv", "text/csv")
         else:
             st.caption("No stored rows yet.")
 
@@ -324,9 +326,10 @@ if not run_batch:
         st.subheader("Accumulated results (in-session)")
         _show_cols = ["unit_code", "element_title", "skill_statement", "qa_passes"]
         edited = st.data_editor(_all[[c for c in _show_cols if c in _all.columns]], use_container_width=True, num_rows="fixed", key="editor_idle")
-        c1, c2 = st.columns(2)
-        c1.download_button("⬇ RSD CSV", to_rsd_rows(_all).to_csv(index=False).encode(), "rsd_output.csv", "text/csv")
-        c2.download_button("⬇ Traceability CSV", to_traceability(_all).to_csv(index=False).encode(), "traceability.csv", "text/csv")
+        c1, c2, c3 = st.columns(3)
+        c1.download_button("⬇ OSMT CSV", to_osmt_rows(_all).to_csv(index=False).encode(), "osmt_import.csv", "text/csv")
+        c2.download_button("⬇ RSD CSV", to_rsd_rows(_all).to_csv(index=False).encode(), "rsd_output.csv", "text/csv")
+        c3.download_button("⬇ Traceability CSV", to_traceability(_all).to_csv(index=False).encode(), "traceability.csv", "text/csv")
     st.stop()
 
 if provider_err:
@@ -496,22 +499,45 @@ else:
     _full_df = all_results
     done = int(st.session_state["next_index_ui"]) >= total
 
+suffix = "" if done else "_in_progress"
+
+# Author name for OSMT export
+osmt_author = st.text_input(
+    "Author name (for OSMT export)",
+    value="",
+    placeholder="e.g. Department of Employment",
+)
+
 rsd_df   = to_rsd_rows(_full_df)
 trace_df = to_traceability(_full_df)
-suffix   = "" if done else "_in_progress"
+osmt_df  = to_osmt_rows(_full_df, author=osmt_author)
 
-c1, c2 = st.columns(2)
+st.caption(
+    "**RSD Name** format: `BSBAUD411.1` = first element of BSBAUD411, "
+    "`BSBAUD411.2` = second element, etc."
+)
+
+c1, c2, c3 = st.columns(3)
 c1.download_button(
-    f"⬇ RSD output CSV{'  ✅' if done else '  (partial)'}",
+    f"⬇ OSMT import CSV{'  ✅' if done else '  (partial)'}",
+    osmt_df.to_csv(index=False).encode(),
+    f"osmt_import{suffix}.csv",
+    "text/csv",
+    help="Ready for OSMT batch import. RSD Name = unit_code.element_number",
+)
+c2.download_button(
+    f"⬇ RSD review CSV{'  ✅' if done else '  (partial)'}",
     rsd_df.to_csv(index=False).encode(),
     f"rsd_output{suffix}.csv",
     "text/csv",
+    help="Internal review format with element titles and QA status",
 )
-c2.download_button(
+c3.download_button(
     f"⬇ Traceability CSV{'  ✅' if done else '  (partial)'}",
     trace_df.to_csv(index=False).encode(),
     f"traceability{suffix}.csv",
     "text/csv",
+    help="Full audit trail — prompts, QA checks, rewrite counts",
 )
 
 if done:
