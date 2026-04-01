@@ -42,4 +42,5 @@ CMD streamlit run app.py \
       --server.port=$PORT \
       --server.address=0.0.0.0 \
       --server.headless=true \
-      --server.maxUploadSize=200
+      --server.maxUploadSize=500 \
+      --server.enableXsrfProtection=false
