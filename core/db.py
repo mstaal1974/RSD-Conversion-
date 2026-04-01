@@ -101,30 +101,30 @@ def create_run(
 ) -> str:
     run_id = str(uuid.uuid4())
     with engine.begin() as conn:
-        conn.execute(
-            text("""
-                INSERT INTO rsd_runs
-                    (id, session_token, source_filename, source_fingerprint,
-                     extractor_name, extractor_version, sil_version,
-                     model, provider, settings, status)
-                VALUES
-                    (:id, :session_token, :source_filename, :source_fingerprint,
-                     :extractor_name, :extractor_version, :sil_version,
-                     :model, :provider, :settings::jsonb, 'created')
-            """),
-            dict(
-                id=run_id,
-                session_token=session_token,
-                source_filename=source_filename,
-                source_fingerprint=source_fingerprint,
-                extractor_name=extractor_name,
-                extractor_version=extractor_version,
-                sil_version=sil_version,
-                model=model,
-                provider=provider,
-                settings=json.dumps(settings),
-            ),
-        )
+conn.execute(
+    text("""
+        INSERT INTO rsd_runs
+            (id, session_token, source_filename, source_fingerprint,
+             extractor_name, extractor_version, sil_version,
+             model, provider, settings, status)
+        VALUES
+            (:id, :session_token, :source_filename, :source_fingerprint,
+             :extractor_name, :extractor_version, :sil_version,
+             :model, :provider, CAST(:settings AS jsonb), 'created')
+    """),
+    dict(
+        id=run_id,
+        session_token=session_token,
+        source_filename=source_filename,
+        source_fingerprint=source_fingerprint,
+        extractor_name=extractor_name,
+        extractor_version=extractor_version,
+        sil_version=sil_version,
+        model=model,
+        provider=provider,
+        settings=json.dumps(settings),
+    ),
+)
     return run_id
 
 
