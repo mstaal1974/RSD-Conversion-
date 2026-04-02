@@ -34,7 +34,8 @@ def test_rsd_rows_count():
 
 def test_rsd_rows_values():
     out = to_rsd_rows(SAMPLE_DF)
-    assert out.iloc[0]["Unit Code"] == "BSBWHS201"
+    assert out.iloc[0]["Unit Code"] == "BSBWHS201.1"
+    assert out.iloc[0]["RSD Name"] == "Prepare to work safely"
     assert out.iloc[0]["Skill Statement"].startswith("Apply WHS")
 
 def test_traceability_columns():
