@@ -82,7 +82,10 @@ def test_blob_extractor_scores_high():
 def test_blob_extractor_normalises_shape():
     ext = BlobExtractor()
     result = ext.extract(BLOB_DF)
-    assert list(result.columns) == ["unit_code", "unit_title", "element_title", "pcs_text"]
+    assert list(result.columns) == [
+        "unit_code", "unit_title", "element_title", "pcs_text",
+        "tp_code", "tp_title",
+    ]
 
 def test_blob_extractor_row_count():
     ext = BlobExtractor()
