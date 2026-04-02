@@ -206,11 +206,13 @@ else:
 
     # Delete a run
     with st.expander("🗑 Delete a run"):
-        del_run_id = st.selectbox(
-            "Select run to delete",
-            runs_df["run_id"].tolist(),
-            format_func=lambda r: f"{r[:8]}… — {runs_df[runs_df['run_id']==r]['source_filename'].iloc[0]}"
-        )
+      runs_df["run_id"] = runs_df["run_id"].astype(str)
+    del_run_id = st.selectbox(
+        "Select run to delete",
+        runs_df["run_id"].tolist(),
+        format_func=lambda r: f"{r[:8]}… — {runs_df[runs_df['run_id']==r]['source_filename'].iloc[0]}"
+            if not runs_df.empty else r,
+    )
         if st.button("Delete run (and all its records)", type="primary"):
             with engine.begin() as conn:
                 conn.execute(text("DELETE FROM runs WHERE run_id=:id"), {"id": del_run_id})
@@ -256,13 +258,15 @@ st.subheader("Skill statement browser")
 # Filters
 f1, f2, f3 = st.columns(3)
 with f1:
-    run_filter = st.selectbox(
-        "Filter by run",
-        ["All runs"] + (runs_df["run_id"].tolist() if not runs_df.empty else []),
-        format_func=lambda r: "All runs" if r == "All runs"
-            else f"{r[:8]}… — {runs_df[runs_df['run_id']==r]['source_filename'].iloc[0]}"
-                 if not runs_df.empty else r,
-    )
+   if not runs_df.empty:
+    runs_df["run_id"] = runs_df["run_id"].astype(str)
+run_filter = st.selectbox(
+    "Filter by run",
+    ["All runs"] + (runs_df["run_id"].tolist() if not runs_df.empty else []),
+    format_func=lambda r: "All runs" if r == "All runs"
+        else f"{r[:8]}… — {runs_df[runs_df['run_id']==r]['source_filename'].iloc[0]}"
+             if not runs_df.empty else r,
+)
 with f2:
     qa_filter = st.selectbox("QA filter", ["All", "Passed only", "Failed only", "Errors only"])
 with f3:
