@@ -175,6 +175,9 @@ else:
     def _status_icon(s: str) -> str:
         return {"completed": "✅", "running": "🔄", "created": "⏳"}.get(str(s), "❓")
 
+    # Convert UUID objects to str before any string slicing
+    runs_df["run_id"] = runs_df["run_id"].astype(str)
+
     display_runs = runs_df.copy()
     display_runs["status"] = display_runs["status"].apply(
         lambda s: f"{_status_icon(s)} {s}"
@@ -206,13 +209,11 @@ else:
 
     # Delete a run
     with st.expander("🗑 Delete a run"):
-      runs_df["run_id"] = runs_df["run_id"].astype(str)
-    del_run_id = st.selectbox(
-        "Select run to delete",
-        runs_df["run_id"].tolist(),
-        format_func=lambda r: f"{r[:8]}… — {runs_df[runs_df['run_id']==r]['source_filename'].iloc[0]}"
-            if not runs_df.empty else r,
-    )
+        del_run_id = st.selectbox(
+            "Select run to delete",
+            runs_df["run_id"].tolist(),
+            format_func=lambda r: f"{r[:8]}… — {runs_df[runs_df['run_id']==r]['source_filename'].iloc[0]}"
+        )
         if st.button("Delete run (and all its records)", type="primary"):
             with engine.begin() as conn:
                 conn.execute(text("DELETE FROM runs WHERE run_id=:id"), {"id": del_run_id})
@@ -258,15 +259,14 @@ st.subheader("Skill statement browser")
 # Filters
 f1, f2, f3 = st.columns(3)
 with f1:
-   if not runs_df.empty:
-    runs_df["run_id"] = runs_df["run_id"].astype(str)
-run_filter = st.selectbox(
-    "Filter by run",
-    ["All runs"] + (runs_df["run_id"].tolist() if not runs_df.empty else []),
-    format_func=lambda r: "All runs" if r == "All runs"
-        else f"{r[:8]}… — {runs_df[runs_df['run_id']==r]['source_filename'].iloc[0]}"
-             if not runs_df.empty else r,
-)
+    run_ids = runs_df["run_id"].astype(str).tolist() if not runs_df.empty else []
+    run_filter = st.selectbox(
+        "Filter by run",
+        ["All runs"] + run_ids,
+        format_func=lambda r: "All runs" if r == "All runs"
+            else f"{r[:8]}… — {runs_df[runs_df['run_id']==r]['source_filename'].iloc[0]}"
+                 if not runs_df.empty else r,
+    )
 with f2:
     qa_filter = st.selectbox("QA filter", ["All", "Passed only", "Failed only", "Errors only"])
 with f3:
