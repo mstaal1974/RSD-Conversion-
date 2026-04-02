@@ -441,7 +441,7 @@ result_df = pd.DataFrame(ordered).drop(columns=["_idx"])
 # ── Persist to DB (if available) ───────────────────────────────────────────────
 if db_ready and run_id:
     try:
-        upsert_skill_records(engine, run_id, result_df, start_index)
+        upsert_skill_records(engine, run_id, result_df, row_index_start=start_index)
         st.success("Batch saved to DB ✅")
         new_next = int(get_next_index(engine, run_id))
         st.session_state["next_index_ui"] = new_next
