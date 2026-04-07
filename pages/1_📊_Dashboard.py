@@ -61,7 +61,7 @@ def load_runs() -> pd.DataFrame:
                 SUM(CASE WHEN s.qa_passes THEN 1 ELSE 0 END) AS qa_passed,
                 SUM(CASE WHEN s.error_message != '' AND s.error_message IS NOT NULL
                          THEN 1 ELSE 0 END)                 AS errors
-            FROM runs r
+            FROM rsd_runs r
             LEFT JOIN skill_records s ON s.run_id = r.run_id
             GROUP BY r.run_id
             ORDER BY r.created_at_utc DESC
@@ -99,7 +99,7 @@ def load_summary_stats() -> dict:
                 ROUND(AVG(s.qa_word_count)::numeric, 1)         AS avg_word_count,
                 ROUND(AVG(s.rewrite_count)::numeric, 2)         AS avg_rewrites,
                 ROUND(AVG(s.bart_temperature)::numeric, 2)      AS avg_temperature
-            FROM runs r
+            FROM rsd_runs r
             LEFT JOIN skill_records s ON s.run_id = r.run_id
         """)).mappings().first()
     return dict(stats) if stats else {}
