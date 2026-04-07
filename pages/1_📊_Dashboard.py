@@ -216,7 +216,7 @@ else:
         )
         if st.button("Delete run (and all its records)", type="primary"):
             with engine.begin() as conn:
-                conn.execute(text("DELETE FROM runs WHERE run_id=:id"), {"id": del_run_id})
+                conn.execute(text("DELETE FROM rsd_runs WHERE run_id=:id"), {"id": del_run_id})
             st.success(f"Deleted run {del_run_id[:8]}…")
             refresh()
 
