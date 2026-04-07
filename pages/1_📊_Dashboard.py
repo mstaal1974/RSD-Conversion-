@@ -74,12 +74,12 @@ def load_skill_records(run_id: str | None = None) -> pd.DataFrame:
     with engine.connect() as conn:
         if run_id:
             res = conn.execute(
-                text("SELECT * FROM skill_records WHERE run_id=:rid ORDER BY row_index"),
+                text("SELECT * FROM rsd_skill_records WHERE run_id=:rid ORDER BY row_index"),
                 {"rid": run_id},
             ).mappings().all()
         else:
             res = conn.execute(
-                text("SELECT * FROM skill_records ORDER BY unit_code, row_index")
+                text("SELECT * FROM rsd_skill_records ORDER BY unit_code, row_index")
             ).mappings().all()
     return pd.DataFrame([dict(r) for r in res]) if res else pd.DataFrame()
 
@@ -120,7 +120,7 @@ def load_unit_summary() -> pd.DataFrame:
                 ROUND(AVG(qa_word_count)::numeric, 1)             AS avg_words,
                 ROUND(AVG(rewrite_count)::numeric, 2)             AS avg_rewrites,
                 MAX(updated_at_utc)                               AS last_updated
-            FROM skill_records
+            FROM rsd_skill_records
             GROUP BY unit_code, unit_title
             ORDER BY unit_code
         """)).mappings().all()
