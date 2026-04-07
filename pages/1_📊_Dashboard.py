@@ -49,7 +49,7 @@ def load_runs() -> pd.DataFrame:
     with engine.connect() as conn:
         res = conn.execute(text("""
             SELECT
-                r.run_id,
+                r.id AS run_id
                 r.created_at_utc,
                 r.updated_at_utc,
                 r.status,
@@ -62,8 +62,8 @@ def load_runs() -> pd.DataFrame:
                 SUM(CASE WHEN s.error_message != '' AND s.error_message IS NOT NULL
                          THEN 1 ELSE 0 END)                 AS errors
             FROM rsd_runs r
-            LEFT JOIN rsd_skill_records s ON s.run_id = r.run_id
-            GROUP BY r.run_id
+            LEFT JOIN rsd_skill_records s ON s.run_id = r.id
+            GROUP BY r.id
             ORDER BY r.created_at_utc DESC
         """)).mappings().all()
     return pd.DataFrame([dict(r) for r in res]) if res else pd.DataFrame()
@@ -100,7 +100,7 @@ def load_summary_stats() -> dict:
                 ROUND(AVG(s.rewrite_count)::numeric, 2)         AS avg_rewrites,
                 ROUND(AVG(s.bart_temperature)::numeric, 2)      AS avg_temperature
             FROM rsd_runs r
-            LEFT JOIN rsd_skill_records s ON s.run_id = r.run_id
+            LEFT JOIN rsd_skill_records s ON s.run_id = r.id
         """)).mappings().first()
     return dict(stats) if stats else {}
 
@@ -216,7 +216,7 @@ else:
         )
         if st.button("Delete run (and all its records)", type="primary"):
             with engine.begin() as conn:
-                conn.execute(text("DELETE FROM rsd_runs WHERE run_id=:id"), {"id": del_run_id})
+                conn.execute(text("DELETE FROM rsd_runs WHERE id=:id"), {"id": del_run_id})
             st.success(f"Deleted run {del_run_id[:8]}…")
             refresh()
 
