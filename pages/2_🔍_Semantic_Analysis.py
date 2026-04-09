@@ -451,21 +451,35 @@ if clusters:
 
     col_chart, col_table = st.columns([3, 2])
     with col_chart:
-        size_hist = pd.DataFrame({"Size": [v["size"] for v in clusters.values()]})
-        hist_data = size_hist["Size"].value_counts().reset_index()
-        hist_data.columns = ["Cluster size", "Count"]
-        hist_data = hist_data.sort_values("Cluster size")
-
+        raw_sizes = [v["size"] for v in clusters.values()]
+        bin_order = ["2-3", "4-5", "6-10", "11-20", "21-50", "51+"]
+        def size_bin(s):
+            if s <= 3:  return "2-3"
+            if s <= 5:  return "4-5"
+            if s <= 10: return "6-10"
+            if s <= 20: return "11-20"
+            if s <= 50: return "21-50"
+            return "51+"
+        bin_counts = {b: 0 for b in bin_order}
+        for s in raw_sizes:
+            bin_counts[size_bin(s)] += 1
+        hist_data = pd.DataFrame([
+            {"Range": b, "Clusters": bin_counts[b]}
+            for b in bin_order if bin_counts[b] > 0
+        ])
         chart = alt.Chart(hist_data).mark_bar(
             color="#38bdf8",
             cornerRadiusTopLeft=4,
             cornerRadiusTopRight=4,
         ).encode(
-            x=alt.X("Cluster size:Q", title="Statements per cluster", scale=alt.Scale(nice=True)),
-            y=alt.Y("Count:Q", title="Number of clusters"),
-            tooltip=["Cluster size", "Count"],
-        ).properties(height=220, title="How many clusters have N members?")
+            x=alt.X("Range:N", sort=bin_order, title="Cluster size (statements)",
+                    axis=alt.Axis(labelAngle=0)),
+            y=alt.Y("Clusters:Q", title="Number of clusters"),
+            tooltip=["Range", "Clusters"],
+        ).properties(height=220, title="Cluster size distribution")
         st.altair_chart(chart, use_container_width=True)
+        median_size = int(pd.Series(raw_sizes).median())
+        st.caption(f"Median: {median_size} · Largest cluster: {max(raw_sizes)} statements")
 
     with col_table:
         st.dataframe(
