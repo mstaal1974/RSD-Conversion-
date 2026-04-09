@@ -461,7 +461,7 @@ if clusters:
             cornerRadiusTopLeft=4,
             cornerRadiusTopRight=4,
         ).encode(
-            x=alt.X("Cluster size:O", title="Statements per cluster"),
+            x=alt.X("Cluster size:Q", title="Statements per cluster", scale=alt.Scale(nice=True)),
             y=alt.Y("Count:Q", title="Number of clusters"),
             tooltip=["Cluster size", "Count"],
         ).properties(height=220, title="How many clusters have N members?")
@@ -489,9 +489,11 @@ upper = sim_slice[np.triu_indices(n_show, k=1)]
 
 hist_vals, hist_bins = np.histogram(upper, bins=40, range=(0, 1))
 hist_df = pd.DataFrame({
-    "similarity": [(hist_bins[i]+hist_bins[i+1])/2 for i in range(len(hist_vals))],
-    "count":      hist_vals,
+    "similarity": [float((hist_bins[i]+hist_bins[i+1])/2) for i in range(len(hist_vals))],
+    "count":      [int(v) for v in hist_vals],
 })
+# Drop empty bins to avoid infinite extent warnings
+hist_df = hist_df[hist_df["count"] > 0]
 score_chart = alt.Chart(hist_df).mark_bar(
     color="#7c3aed",
     cornerRadiusTopLeft=2,
@@ -515,7 +517,8 @@ dupe_line = alt.Chart(pd.DataFrame({"x": [duplicate_threshold]})).mark_rule(
     color="#f43f5e", strokeDash=[4,2], size=1.5
 ).encode(x="x:Q")
 
-st.altair_chart(score_chart + cluster_line + dupe_line, use_container_width=True)
+combined = (score_chart + cluster_line + dupe_line).resolve_scale(x="shared")
+st.altair_chart(combined, use_container_width=True)
 st.caption(f"🔵 Cluster threshold ({cluster_threshold})  🔴 Near-duplicate threshold ({duplicate_threshold})")
 
 # ── Similarity heatmap ────────────────────────────────────────────────────────
@@ -539,8 +542,8 @@ for i in range(heatmap_n):
 
 heat_df = pd.DataFrame(rows_heat)
 heatmap = alt.Chart(heat_df).mark_rect().encode(
-    x=alt.X("x:O", axis=alt.Axis(labels=False, ticks=False, title="Statement index →")),
-    y=alt.Y("y:O", sort=None, axis=alt.Axis(labels=False, ticks=False, title="↑ Statement index")),
+    x=alt.X("x:N", axis=alt.Axis(labels=False, ticks=False, title="Statement index →")),
+    y=alt.Y("y:N", sort=None, axis=alt.Axis(labels=False, ticks=False, title="↑ Statement index")),
     color=alt.Color(
         "sim:Q",
         scale=alt.Scale(scheme="viridis"),
@@ -556,7 +559,7 @@ heatmap = alt.Chart(heat_df).mark_rect().encode(
     width=600,
     height=600,
     title=f"Cosine similarity heatmap — first {heatmap_n} statements (diagonal = 1.0)",
-)
+).interactive(False)
 st.altair_chart(heatmap, use_container_width=True)
 st.caption(
     "Bright diagonal = each statement is identical to itself. "
