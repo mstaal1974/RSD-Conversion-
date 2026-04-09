@@ -321,8 +321,10 @@ def find_near_dupes(sim_matrix, threshold, df):
                 pairs.append({
                     "idx_a": i, "idx_b": j,
                     "similarity": round(s, 4),
-                    "unit_a": df.iloc[i].get("unit_code",""),
-                    "unit_b": df.iloc[j].get("unit_code",""),
+                    "unit_a":       df.iloc[i].get("unit_code",""),
+                    "unit_title_a": df.iloc[i].get("unit_title",""),
+                    "unit_b":       df.iloc[j].get("unit_code",""),
+                    "unit_title_b": df.iloc[j].get("unit_title",""),
                     "text_a": df.iloc[i].get("skill_statement",""),
                     "text_b": df.iloc[j].get("skill_statement",""),
                     "elem_a": df.iloc[i].get("element_title",""),
@@ -607,16 +609,19 @@ else:
             f"⭐ {info['canonical_text'][:70]}…"
         ):
             for _, mem in members.iterrows():
-                is_canon = mem.name == canon_idx
-                unit  = mem.get("unit_code", "")
-                elem  = mem.get("element_title", "")
-                stmt  = mem.get("skill_statement", "")
-                card_class = "cluster-card canonical" if is_canon else "cluster-card"
-                badge = "⭐ CANONICAL &nbsp;" if is_canon else "○ &nbsp;"
+                is_canon    = mem.name == canon_idx
+                unit        = mem.get("unit_code", "")
+                unit_title  = mem.get("unit_title", "")
+                elem        = mem.get("element_title", "")
+                stmt        = mem.get("skill_statement", "")
+                card_class  = "cluster-card canonical" if is_canon else "cluster-card"
+                badge       = "⭐ CANONICAL &nbsp;" if is_canon else "○ &nbsp;"
                 st.markdown(
                     f'<div class="{card_class}">'
                     f'<span class="unit-badge">{unit}</span>'
-                    f'<strong style="color:#94a3b8;font-size:0.8rem">{badge}{elem}</strong>'
+                    f'<span style="font-size:0.75rem;color:#64748b">{unit_title}</span>'
+                    f'<br><strong style="color:#94a3b8;font-size:0.8rem">{badge}'
+                    f'<span style="font-style:italic">{elem}</span></strong>'
                     f'<div class="stmt">{stmt}</div>'
                     f'</div>',
                     unsafe_allow_html=True,
@@ -682,14 +687,28 @@ else:
             f'<span style="font-family:DM Mono,monospace;font-size:0.72rem;color:#64748b">{cross}</span>'
             f'<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:10px">'
             f'<div>'
-            f'  <div style="font-family:DM Mono,monospace;font-size:0.7rem;color:#7dd3fc">'
-            f'    {pair["unit_a"]} / {pair["elem_a"]}</div>'
-            f'  <div style="font-size:0.88rem;color:#e2e8f0;margin-top:4px">{pair["text_a"]}</div>'
+            f'  <div style="font-family:DM Mono,monospace;font-size:0.72rem;color:#7dd3fc">'
+            f'    {pair["unit_a"]}'
+            f'  </div>'
+            f'  <div style="font-size:0.75rem;color:#94a3b8;margin-top:2px">'
+            f'    {pair["unit_title_a"]}'
+            f'  </div>'
+            f'  <div style="font-size:0.72rem;color:#475569;margin-top:2px;font-style:italic">'
+            f'    Element: {pair["elem_a"]}'
+            f'  </div>'
+            f'  <div style="font-size:0.88rem;color:#e2e8f0;margin-top:6px">{pair["text_a"]}</div>'
             f'</div>'
             f'<div>'
-            f'  <div style="font-family:DM Mono,monospace;font-size:0.7rem;color:#7dd3fc">'
-            f'    {pair["unit_b"]} / {pair["elem_b"]}</div>'
-            f'  <div style="font-size:0.88rem;color:#e2e8f0;margin-top:4px">{pair["text_b"]}</div>'
+            f'  <div style="font-family:DM Mono,monospace;font-size:0.72rem;color:#7dd3fc">'
+            f'    {pair["unit_b"]}'
+            f'  </div>'
+            f'  <div style="font-size:0.75rem;color:#94a3b8;margin-top:2px">'
+            f'    {pair["unit_title_b"]}'
+            f'  </div>'
+            f'  <div style="font-size:0.72rem;color:#475569;margin-top:2px;font-style:italic">'
+            f'    Element: {pair["elem_b"]}'
+            f'  </div>'
+            f'  <div style="font-size:0.88rem;color:#e2e8f0;margin-top:6px">{pair["text_b"]}</div>'
             f'</div>'
             f'</div>'
             f'</div>',
