@@ -119,9 +119,12 @@ def load_all():
     with engine.connect() as conn:
         df = pd.DataFrame(
             conn.execute(text(
-                "SELECT unit_code, unit_title, element_title, skill_statement, "
-                "keywords, qa_passes, qa_word_count, rewrite_count, tp_code, tp_title "
-                "FROM rsd_skill_records ORDER BY unit_code, row_index"
+                "SELECT s.unit_code, s.unit_title, s.element_title, s.skill_statement, "
+                "s.keywords, s.qa_passes, s.qa_word_count, s.rewrite_count, "
+                "s.tp_code, s.tp_title, r.source_filename "
+                "FROM rsd_skill_records s "
+                "LEFT JOIN rsd_runs r ON r.id = s.run_id "
+                "ORDER BY s.unit_code, s.row_index"
             )).mappings().all()
         )
     return df
@@ -132,9 +135,29 @@ if df.empty:
     st.info("No skill records in DB yet.")
     st.stop()
 
-df["unit_code"]  = df["unit_code"].fillna("(unknown)")
-df["tp_code"]    = df["tp_code"].fillna(df["unit_code"].str[:3])
-df["qa_passes"]  = df["qa_passes"].fillna(False)
+# Robust tp_code derivation — DB stores empty strings, not NULLs, for missing values
+df["unit_code"] = df["unit_code"].replace("", np.nan).fillna("(unknown)")
+
+# Priority: tp_code column -> unit_code first 3 chars -> source_filename -> fallback
+df["tp_code"] = df["tp_code"].replace("", np.nan)
+_uc_prefix = df["unit_code"].str[:3].replace("(un", np.nan).replace("", np.nan)
+df["tp_code"] = df["tp_code"].fillna(_uc_prefix)
+
+# Derive from source_filename for records still blank (e.g. "MSL.xlsx" -> "MSL")
+if "source_filename" in df.columns:
+    _from_file = (
+        df["source_filename"].fillna("")
+        .str.replace(r"\.(xlsx|csv)$", "", regex=True)
+        .str.replace(r"\s.*$", "", regex=True)   # strip spaces and after
+        .str.upper().str[:6]
+        .replace("", np.nan)
+    )
+    df["tp_code"] = df["tp_code"].fillna(_from_file)
+    df.drop(columns=["source_filename"], inplace=True, errors="ignore")
+
+df["tp_code"]  = df["tp_code"].fillna("(unknown)").replace("", "(unknown)")
+df["tp_title"] = df["tp_title"].replace("", np.nan).fillna(df["tp_code"])
+df["qa_passes"] = df["qa_passes"].fillna(False)
 
 n_total    = len(df)
 n_units    = df["unit_code"].nunique()
