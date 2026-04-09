@@ -613,10 +613,12 @@ else:
                 f"[{df_ann.loc[i,'unit_code']}] {df_ann.loc[i,'skill_statement'][:70]}…": i
                 for i in info["member_indices"]
             }
+            opt_values = list(opts.values())
+            safe_index = opt_values.index(canon_idx) if canon_idx in opt_values else 0
             chosen_label = st.selectbox(
                 "Set canonical",
                 list(opts.keys()),
-                index=list(opts.values()).index(canon_idx),
+                index=safe_index,
                 key=f"canon_sel_{cluster_id}",
             )
             chosen_idx = opts[chosen_label]
