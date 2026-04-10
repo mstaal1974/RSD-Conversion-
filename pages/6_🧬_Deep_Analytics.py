@@ -320,18 +320,20 @@ avg_coh = float(cohesion_df["cohesion"].mean()) if not cohesion_df.empty else 0
 avg_qual = float(df["quality_score"].mean())
 
 cols = st.columns(5)
-for col, val, lbl, sub in zip(cols, [
-    (f"{n:,}",         "Statements",        f"{df['unit_code'].nunique()} units"),
-    (f"{avg_uniq:.2f}", "Avg uniqueness",    "1.0 = fully unique"),
-    (f"{pct_redund:.1%}","Redundancy rate",  f"pairs > {sim_threshold}"),
-    (f"{avg_coh:.3f}",  "Avg UOC cohesion",  "intra − inter sim"),
-    (f"{avg_qual:.2f}", "Avg quality score", "0–1 composite"),
-], [None]*5):
+metrics = [
+    (f"{n:,}",          "Statements",       f"{df['unit_code'].nunique()} units"),
+    (f"{avg_uniq:.2f}", "Avg uniqueness",   "1.0 = fully unique"),
+    (f"{pct_redund:.1%}","Redundancy rate", f"pairs > {sim_threshold}"),
+    (f"{avg_coh:.3f}",  "Avg UOC cohesion", "intra − inter sim"),
+    (f"{avg_qual:.2f}", "Avg quality score","0–1 composite"),
+]
+for col, (val, lbl, sub) in zip(cols, metrics):
     with col:
         st.markdown(
-            f'<div class="dak-card"><div class="dak-val">{val[0]}</div>'
-            f'<div class="dak-lbl">{val[1]}</div><div class="dak-sub">{val[2]}</div></div>',
+            f'<div class="dak-card"><div class="dak-val">{val}</div>'
+            f'<div class="dak-lbl">{lbl}</div><div class="dak-sub">{sub}</div></div>',
             unsafe_allow_html=True)
+
 
 # ── TABS ──────────────────────────────────────────────────────────────────────
 t1,t2,t3,t4,t5,t6,t7 = st.tabs([
