@@ -12,10 +12,9 @@ anthropic>=0.49,<1.0
 sqlalchemy>=2.0,<3.0
 psycopg[binary]>=3.2,<4.0
 
-# Semantic analysis
+# Semantic analysis — sklearn + numpy only (no torch)
 scikit-learn>=1.4,<2.0
 numpy>=1.26,<3.0
-sentence-transformers>=3.0,<4.0
 
 # Visualisation
 plotly>=5.18,<6.0
