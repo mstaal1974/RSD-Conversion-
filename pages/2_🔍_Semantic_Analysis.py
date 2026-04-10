@@ -272,7 +272,11 @@ def get_embeddings_local(texts, model_name="all-MiniLM-L6-v2"):
     try:
         from sentence_transformers import SentenceTransformer
     except ImportError:
-        st.error("sentence-transformers not installed. Add it to requirements.txt.")
+        st.error(
+            "sentence-transformers is not installed in this deployment. "
+            "Switch to **OpenAI** embedding backend in the sidebar, or add "
+            "`sentence-transformers>=3.0,<4.0` to requirements.txt and redeploy."
+        )
         st.stop()
     model = SentenceTransformer(model_name)
     clean = [t if t and t.strip() else "empty" for t in texts]
@@ -537,52 +541,161 @@ combined = (score_chart + cluster_line + dupe_line).resolve_scale(x="shared")
 st.altair_chart(combined, use_container_width=True)
 st.caption(f"🔵 Cluster threshold ({cluster_threshold})  🔴 Near-duplicate threshold ({duplicate_threshold})")
 
-# ── Similarity heatmap ────────────────────────────────────────────────────────
+# ── Similarity heatmap (two-tier) ─────────────────────────────────────────────
 st.markdown('<div class="section-header">Similarity heatmap</div>', unsafe_allow_html=True)
 
-heatmap_n = st.slider("Statements to show in heatmap", 20, min(100, len(df_ann)), min(50, len(df_ann)), 5)
-sim_h = sim_matrix[:heatmap_n, :heatmap_n]
+heatmap_tab1, heatmap_tab2 = st.tabs([
+    "📦 Unit-level (overview — all data)",
+    "🔬 Statement-level (drill-down)",
+])
 
-rows_heat = []
-for i in range(heatmap_n):
-    for j in range(heatmap_n):
-        uc = df_ann.iloc[i].get("unit_code","")
-        rows_heat.append({
-            "x": f"{j}",
-            "y": f"{i}",
-            "sim": float(sim_h[i, j]),
-            "unit_x": df_ann.iloc[j].get("unit_code",""),
-            "unit_y": uc,
-            "elem_y": df_ann.iloc[i].get("element_title","")[:40],
-        })
+with heatmap_tab1:
+    st.caption(
+        "Average pairwise similarity between all statements in each training package. "
+        "Click a cell in the drill-down tab to explore any pair in detail."
+    )
+    # Build unit × unit avg similarity matrix
+    unit_codes_all = df_ann["unit_code"].fillna("(blank)").values
+    unique_units   = sorted(set(unit_codes_all))
 
-heat_df = pd.DataFrame(rows_heat)
-heatmap = alt.Chart(heat_df).mark_rect().encode(
-    x=alt.X("x:N", axis=alt.Axis(labels=False, ticks=False, title="Statement index →")),
-    y=alt.Y("y:N", sort=None, axis=alt.Axis(labels=False, ticks=False, title="↑ Statement index")),
-    color=alt.Color(
-        "sim:Q",
-        scale=alt.Scale(scheme="viridis"),
-        legend=alt.Legend(title="Similarity"),
-    ),
-    tooltip=[
-        alt.Tooltip("unit_y:N", title="Unit"),
-        alt.Tooltip("elem_y:N", title="Element"),
-        alt.Tooltip("unit_x:N", title="Compared with"),
-        alt.Tooltip("sim:Q", format=".3f", title="Similarity"),
-    ],
-).properties(
-    width=600,
-    height=600,
-    title=f"Cosine similarity heatmap — first {heatmap_n} statements (diagonal = 1.0)",
-).interactive(False)
-st.altair_chart(heatmap, use_container_width=True)
-st.caption(
-    "Bright diagonal = each statement is identical to itself. "
-    "Bright off-diagonal clusters reveal groups of similar statements."
-)
+    if len(unique_units) <= 1:
+        st.info("Need at least 2 different unit codes to show unit-level heatmap.")
+    else:
+        # Cap at 40 units for readability — pick the ones with most statements
+        unit_counts = df_ann["unit_code"].fillna("(blank)").value_counts()
+        top_units   = unit_counts.head(40).index.tolist()
+        top_units_sorted = sorted(top_units)
 
-# ── Cluster browser ───────────────────────────────────────────────────────────
+        # Compute avg similarity per unit pair
+        unit_idx = {u: np.where(unit_codes_all == u)[0] for u in top_units_sorted}
+        unit_rows = []
+        for ua in top_units_sorted:
+            for ub in top_units_sorted:
+                idxs_a = unit_idx[ua]
+                idxs_b = unit_idx[ub]
+                # Slice submatrix and average
+                submat = sim_matrix[np.ix_(idxs_a, idxs_b)]
+                avg_sim = float(submat.mean())
+                unit_rows.append({
+                    "Unit A": ua,
+                    "Unit B": ub,
+                    "Avg similarity": round(avg_sim, 3),
+                })
+
+        unit_heat_df = pd.DataFrame(unit_rows)
+
+        # Short labels for axis
+        label_map = {u: u[-7:] if len(u) > 7 else u for u in top_units_sorted}
+        unit_heat_df["A_label"] = unit_heat_df["Unit A"].map(label_map)
+        unit_heat_df["B_label"] = unit_heat_df["Unit B"].map(label_map)
+
+        unit_heatmap = alt.Chart(unit_heat_df).mark_rect().encode(
+            x=alt.X("B_label:N", sort=None,
+                    axis=alt.Axis(labelAngle=-45, title="Training package →")),
+            y=alt.Y("A_label:N", sort=None,
+                    axis=alt.Axis(title="↑ Training package")),
+            color=alt.Color(
+                "Avg similarity:Q",
+                scale=alt.Scale(scheme="viridis", domain=[0.3, 1.0]),
+                legend=alt.Legend(title="Avg similarity"),
+            ),
+            tooltip=[
+                alt.Tooltip("Unit A:N", title="Unit A"),
+                alt.Tooltip("Unit B:N", title="Unit B"),
+                alt.Tooltip("Avg similarity:Q", format=".3f"),
+            ],
+        ).properties(
+            width=600, height=600,
+            title=f"Unit-level similarity — {len(top_units_sorted)} training packages",
+        ).interactive(False)
+        st.altair_chart(unit_heatmap, use_container_width=True)
+        st.caption(
+            f"Showing top {len(top_units_sorted)} units by statement count. "
+            "Diagonal = 1.0 (unit compared to itself). "
+            "High off-diagonal = overlap between units."
+        )
+
+        # Cross-unit overlap table
+        cross = unit_heat_df[
+            (unit_heat_df["Unit A"] != unit_heat_df["Unit B"]) &
+            (unit_heat_df["Avg similarity"] >= cluster_threshold)
+        ].sort_values("Avg similarity", ascending=False).head(20)
+
+        if len(cross):
+            with st.expander(f"⚡ {len(cross)} high-overlap unit pairs (avg sim ≥ {cluster_threshold})"):
+                st.dataframe(
+                    cross[["Unit A", "Unit B", "Avg similarity"]],
+                    use_container_width=True, hide_index=True,
+                )
+
+with heatmap_tab2:
+    st.caption("Select two units to compare their statements head-to-head.")
+    col_ua, col_ub = st.columns(2)
+    with col_ua:
+        unit_a_sel = st.selectbox("Unit A", top_units_sorted if len(unique_units) > 1 else unique_units, key="heat_ua")
+    with col_ub:
+        remaining = [u for u in (top_units_sorted if len(unique_units) > 1 else unique_units) if u != unit_a_sel]
+        unit_b_sel = st.selectbox("Unit B", remaining, key="heat_ub") if remaining else unit_a_sel
+
+    idxs_a2 = np.where(unit_codes_all == unit_a_sel)[0]
+    idxs_b2 = np.where(unit_codes_all == unit_b_sel)[0]
+
+    if len(idxs_a2) == 0 or len(idxs_b2) == 0:
+        st.info("No statements found for one of the selected units.")
+    else:
+        max_drill = 30
+        idxs_a2 = idxs_a2[:max_drill]
+        idxs_b2 = idxs_b2[:max_drill]
+        submat = sim_matrix[np.ix_(idxs_a2, idxs_b2)]
+
+        drill_rows = []
+        for ii, ia in enumerate(idxs_a2):
+            for jj, ib in enumerate(idxs_b2):
+                drill_rows.append({
+                    "A": df_ann.iloc[ia].get("element_title","")[:35],
+                    "B": df_ann.iloc[ib].get("element_title","")[:35],
+                    "sim": round(float(submat[ii, jj]), 3),
+                })
+
+        drill_df = pd.DataFrame(drill_rows)
+        a_labels = sorted(drill_df["A"].unique().tolist())
+        b_labels = sorted(drill_df["B"].unique().tolist())
+
+        drill_chart = alt.Chart(drill_df).mark_rect().encode(
+            x=alt.X("B:N", sort=b_labels,
+                    axis=alt.Axis(labelAngle=-45, title=f"{unit_b_sel} elements →")),
+            y=alt.Y("A:N", sort=a_labels,
+                    axis=alt.Axis(title=f"↑ {unit_a_sel} elements")),
+            color=alt.Color(
+                "sim:Q",
+                scale=alt.Scale(scheme="viridis", domain=[0, 1]),
+                legend=alt.Legend(title="Similarity"),
+            ),
+            tooltip=[
+                alt.Tooltip("A:N", title=unit_a_sel),
+                alt.Tooltip("B:N", title=unit_b_sel),
+                alt.Tooltip("sim:Q", format=".3f", title="Similarity"),
+            ],
+        ).properties(
+            width=600, height=500,
+            title=f"{unit_a_sel} vs {unit_b_sel} — element-level similarity",
+        ).interactive(False)
+        st.altair_chart(drill_chart, use_container_width=True)
+
+        # Show highly similar pairs as a table
+        hot_pairs = drill_df[drill_df["sim"] >= cluster_threshold].sort_values("sim", ascending=False)
+        if len(hot_pairs):
+            st.markdown(f"**{len(hot_pairs)} element pairs above threshold {cluster_threshold}:**")
+            st.dataframe(hot_pairs, use_container_width=True, hide_index=True,
+                column_config={
+                    "A":   st.column_config.TextColumn(unit_a_sel),
+                    "B":   st.column_config.TextColumn(unit_b_sel),
+                    "sim": st.column_config.NumberColumn("Similarity", format="%.3f"),
+                })
+        else:
+            st.info(f"No element pairs above threshold {cluster_threshold} between these units.")
+
+# ── Cluster browser ────────────────────────────────────────────────────────
 st.markdown('<div class="section-header">Cluster browser</div>', unsafe_allow_html=True)
 st.caption("Each cluster groups semantically similar statements. ⭐ = canonical (closest to cluster centre). Override the canonical below each cluster.")
 
@@ -591,62 +704,174 @@ if not clusters:
 else:
     overrides = st.session_state.get("sa_overrides", {})
 
-    # Sort largest → smallest
-    sorted_clusters = sorted(clusters.items(), key=lambda x: x[1]["size"], reverse=True)
+    # Build enriched cluster list
+    cluster_rows = []
+    for cid, info in clusters.items():
+        members     = df_ann[df_ann.index.isin(info["member_indices"])]
+        unit_codes  = members["unit_code"].dropna().unique().tolist()
+        tp_prefixes = sorted(set(c[:3] for c in unit_codes if c))
+        cross_tp    = len(tp_prefixes) > 1
+        cluster_rows.append({
+            "id":          cid,
+            "size":        info["size"],
+            "canonical":   info["canonical_text"],
+            "units":       ", ".join(unit_codes[:4]) + (" …" if len(unit_codes) > 4 else ""),
+            "tp":          ", ".join(tp_prefixes),
+            "cross_tp":    cross_tp,
+            "info":        info,
+        })
 
-    # Pagination
-    per_page = 10
-    total_pages = max(1, (len(sorted_clusters) + per_page - 1) // per_page)
-    page = st.number_input("Page", 1, total_pages, 1, key="cluster_page")
-    page_clusters = sorted_clusters[(page-1)*per_page : page*per_page]
+    cluster_rows.sort(key=lambda x: x["size"], reverse=True)
 
-    for cluster_id, info in page_clusters:
-        members = df_ann[df_ann.index.isin(info["member_indices"])]
-        canon_idx = overrides.get(cluster_id, info["canonical_idx"])
+    # ── Summary table + filters ───────────────────────────────────────
+    cb_tab1, cb_tab2 = st.tabs(["📋 Summary table", "🔎 Detailed browser"])
 
-        with st.expander(
-            f"**Cluster {cluster_id}** — {info['size']} statements  |  "
-            f"⭐ {info['canonical_text'][:70]}…"
-        ):
-            for _, mem in members.iterrows():
-                is_canon    = mem.name == canon_idx
-                unit        = mem.get("unit_code", "")
-                unit_title  = mem.get("unit_title", "")
-                elem        = mem.get("element_title", "")
-                stmt        = mem.get("skill_statement", "")
-                card_class  = "cluster-card canonical" if is_canon else "cluster-card"
-                badge       = "⭐ CANONICAL &nbsp;" if is_canon else "○ &nbsp;"
+    with cb_tab1:
+        summary_df = pd.DataFrame([{
+            "Cluster":   f"C{r['id']}",
+            "Size":      r["size"],
+            "Cross-TP":  "⚡" if r["cross_tp"] else "",
+            "Packages":  r["tp"],
+            "Units":     r["units"],
+            "Canonical": r["canonical"][:90] + "…",
+        } for r in cluster_rows])
+
+        # Filters
+        f1, f2, f3 = st.columns(3)
+        with f1:
+            search_term = st.text_input("🔍 Search canonical", placeholder="keyword…", key="cb_search")
+        with f2:
+            tp_options = sorted(set(r["tp"] for r in cluster_rows if r["tp"]))
+            tp_filter  = st.selectbox("Filter by TP", ["All"] + tp_options, key="cb_tp")
+        with f3:
+            cross_only = st.checkbox("⚡ Cross-TP clusters only", key="cb_cross")
+
+        filtered = summary_df.copy()
+        if search_term:
+            filtered = filtered[filtered["Canonical"].str.contains(search_term, case=False, na=False)]
+        if tp_filter != "All":
+            filtered = filtered[filtered["Packages"].str.contains(tp_filter, na=False)]
+        if cross_only:
+            filtered = filtered[filtered["Cross-TP"] == "⚡"]
+
+        st.caption(f"Showing {len(filtered)} of {len(summary_df)} clusters")
+        st.dataframe(
+            filtered,
+            use_container_width=True,
+            column_config={
+                "Cluster":   st.column_config.TextColumn("ID", width="small"),
+                "Size":      st.column_config.NumberColumn("Size", width="small"),
+                "Cross-TP":  st.column_config.TextColumn("⚡", width="small"),
+                "Packages":  st.column_config.TextColumn("Packages", width="small"),
+                "Units":     st.column_config.TextColumn("Units"),
+                "Canonical": st.column_config.TextColumn("Canonical statement", width="large"),
+            },
+            hide_index=True,
+        )
+
+        # Cross-TP cluster breakdown
+        cross_tp_clusters = [r for r in cluster_rows if r["cross_tp"]]
+        if cross_tp_clusters:
+            st.markdown(
+                f"**{len(cross_tp_clusters)} cross-training-package clusters** "
+                f"— these represent skills that appear in multiple TPs and are prime "
+                f"candidates for a single shared canonical statement."
+            )
+
+    with cb_tab2:
+        # Filters for detailed view
+        f1d, f2d, f3d = st.columns(3)
+        with f1d:
+            search_d = st.text_input("🔍 Search", placeholder="keyword…", key="cb_search_d")
+        with f2d:
+            tp_d = st.selectbox("Filter by TP", ["All"] + tp_options, key="cb_tp_d")
+        with f3d:
+            sort_by = st.selectbox("Sort by", ["Size ↓", "Cross-TP first", "Alphabetical"], key="cb_sort")
+
+        filtered_rows = cluster_rows.copy()
+        if search_d:
+            filtered_rows = [r for r in filtered_rows
+                             if search_d.lower() in r["canonical"].lower()
+                             or search_d.lower() in r["units"].lower()]
+        if tp_d != "All":
+            filtered_rows = [r for r in filtered_rows if tp_d in r["tp"]]
+        if sort_by == "Cross-TP first":
+            filtered_rows.sort(key=lambda x: (not x["cross_tp"], -x["size"]))
+        elif sort_by == "Alphabetical":
+            filtered_rows.sort(key=lambda x: x["canonical"][:30])
+
+        # Pagination
+        per_page = 8
+        total_pages = max(1, (len(filtered_rows) + per_page - 1) // per_page)
+        page_col, info_col = st.columns([2, 3])
+        with page_col:
+            page = st.number_input("Page", 1, total_pages, 1, key="cluster_page")
+        with info_col:
+            st.caption(f"Showing page {page}/{total_pages} — {len(filtered_rows)} clusters")
+
+        page_clusters = filtered_rows[(page-1)*per_page : page*per_page]
+
+        for row in page_clusters:
+            cluster_id = row["id"]
+            info       = row["info"]
+            members    = df_ann[df_ann.index.isin(info["member_indices"])]
+            canon_idx  = overrides.get(cluster_id, info["canonical_idx"])
+            cross_badge = " ⚡ CROSS-TP" if row["cross_tp"] else ""
+            size_badge  = f"{info['size']} stmts"
+
+            with st.expander(
+                f"**C{cluster_id}** {cross_badge} — {size_badge}  |  "
+                f"⭐ {info['canonical_text'][:65]}…"
+            ):
+                # Mini stats bar
+                tp_list = row["tp"] if row["tp"] else "unknown"
                 st.markdown(
-                    f'<div class="{card_class}">'
-                    f'<span class="unit-badge">{unit}</span>'
-                    f'<span style="font-size:0.75rem;color:#64748b">{unit_title}</span>'
-                    f'<br><strong style="color:#94a3b8;font-size:0.8rem">{badge}'
-                    f'<span style="font-style:italic">{elem}</span></strong>'
-                    f'<div class="stmt">{stmt}</div>'
-                    f'</div>',
+                    f"<div style='display:flex;gap:16px;margin-bottom:12px'>"
+                    f"<span style='font-family:DM Mono,monospace;font-size:0.72rem;"
+                    f"color:#38bdf8'>Packages: {tp_list}</span>"
+                    f"<span style='font-family:DM Mono,monospace;font-size:0.72rem;"
+                    f"color:#94a3b8'>Units: {row['units']}</span>"
+                    f"</div>",
                     unsafe_allow_html=True,
                 )
 
-            # Override selector
-            opts = {
-                f"[{df_ann.loc[i,'unit_code']}] {df_ann.loc[i,'skill_statement'][:70]}…": i
-                for i in info["member_indices"]
-            }
-            opt_values = list(opts.values())
-            safe_index = opt_values.index(canon_idx) if canon_idx in opt_values else 0
-            chosen_label = st.selectbox(
-                "Set canonical",
-                list(opts.keys()),
-                index=safe_index,
-                key=f"canon_sel_{cluster_id}",
-            )
-            chosen_idx = opts[chosen_label]
-            if chosen_idx != info["canonical_idx"]:
-                overrides[cluster_id] = chosen_idx
-                st.session_state["sa_overrides"] = overrides
-                st.success("Override saved ✅")
+                for _, mem in members.iterrows():
+                    is_canon    = mem.name == canon_idx
+                    unit        = mem.get("unit_code", "")
+                    unit_title  = mem.get("unit_title", "")
+                    elem        = mem.get("element_title", "")
+                    stmt        = mem.get("skill_statement", "")
+                    card_class  = "cluster-card canonical" if is_canon else "cluster-card"
+                    badge       = "⭐ CANONICAL &nbsp;" if is_canon else "○ &nbsp;"
+                    st.markdown(
+                        f'<div class="{card_class}">'
+                        f'<span class="unit-badge">{unit}</span>'
+                        f'<span style="font-size:0.75rem;color:#64748b">{unit_title}</span>'
+                        f'<br><strong style="color:#94a3b8;font-size:0.8rem">{badge}'
+                        f'<span style="font-style:italic">{elem}</span></strong>'
+                        f'<div class="stmt">{stmt}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
 
-    st.caption(f"Showing page {page} of {total_pages} — {len(sorted_clusters)} clusters total")
+                # Override selector
+                opts = {
+                    f"[{df_ann.loc[i,'unit_code']}] {df_ann.loc[i,'skill_statement'][:70]}…": i
+                    for i in info["member_indices"]
+                }
+                opt_values  = list(opts.values())
+                safe_index  = opt_values.index(canon_idx) if canon_idx in opt_values else 0
+                chosen_label = st.selectbox(
+                    "Set canonical",
+                    list(opts.keys()),
+                    index=safe_index,
+                    key=f"canon_sel_{cluster_id}",
+                )
+                chosen_idx = opts[chosen_label]
+                if chosen_idx != info["canonical_idx"]:
+                    overrides[cluster_id] = chosen_idx
+                    st.session_state["sa_overrides"] = overrides
+                    st.success("Override saved ✅")
 
 # ── Near-duplicate pairs ──────────────────────────────────────────────────────
 st.markdown('<div class="section-header">Near-duplicate pairs</div>', unsafe_allow_html=True)
