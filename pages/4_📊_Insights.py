@@ -544,7 +544,7 @@ with col_qa2:
         x=alt.X("rate:Q", title="QA pass rate (%)", scale=alt.Scale(domain=[0, 105])),
         color=alt.Color(
             "rate:Q",
-            scale=alt.Scale(scheme="rdylgn", domain=[60, 100]),
+            scale=alt.Scale(scheme="redyellowgreen", domain=[60, 100]),
             legend=None,
         ),
         tooltip=[
