@@ -126,7 +126,7 @@ def create_run(
                 VALUES
                     (:id, :session_token, :source_filename, :source_fingerprint,
                      :extractor_name, :extractor_version, :sil_version,
-                     :model, :provider, CAST(:settings AS jsonb), 'created')
+                     :model, :provider, :settings::jsonb, 'created')
             """),
             dict(
                 id=run_id,
@@ -247,3 +247,245 @@ def fetch_run_records(engine: Engine, run_id: str) -> pd.DataFrame:
         rows = result.fetchall()
         cols = result.keys()
     return pd.DataFrame(rows, columns=list(cols))
+
+
+# ---------------------------------------------------------------------------
+# Taxonomy schema migration  (called from init_db and the taxonomy page)
+# ---------------------------------------------------------------------------
+
+_TAXONOMY_DDL = """
+CREATE TABLE IF NOT EXISTS pipeline_runs (
+    id               SERIAL       PRIMARY KEY,
+    run_type         VARCHAR(20)  NOT NULL DEFAULT 'full',
+    tp_scope         TEXT,
+    started_at       TIMESTAMPTZ  DEFAULT NOW(),
+    completed_at     TIMESTAMPTZ,
+    status           VARCHAR(20)  DEFAULT 'running',
+    quals_processed  INTEGER      DEFAULT 0,
+    uocs_processed   INTEGER      DEFAULT 0,
+    links_created    INTEGER      DEFAULT 0,
+    links_updated    INTEGER      DEFAULT 0,
+    error_message    TEXT
+);
+
+CREATE TABLE IF NOT EXISTS anzsco_codes (
+    anzsco_code       VARCHAR(10)  PRIMARY KEY,
+    anzsco_title      TEXT         NOT NULL,
+    anzsco_level      VARCHAR(20)  NOT NULL DEFAULT 'unit',
+    major_group_code  VARCHAR(3),
+    major_group_title TEXT,
+    created_at        TIMESTAMPTZ  DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS uoc_registry (
+    uoc_code              VARCHAR(20)  PRIMARY KEY,
+    uoc_title             TEXT         NOT NULL,
+    tp_code               VARCHAR(10)  NOT NULL,
+    tp_title              TEXT,
+    usage_recommendation  VARCHAR(20)  DEFAULT 'Current',
+    release_number        INTEGER      DEFAULT 1,
+    tga_last_updated      DATE,
+    ingested_at           TIMESTAMPTZ  DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_uoc_tp     ON uoc_registry(tp_code);
+CREATE INDEX IF NOT EXISTS idx_uoc_status ON uoc_registry(usage_recommendation);
+
+CREATE TABLE IF NOT EXISTS qual_registry (
+    qual_code            VARCHAR(20)  PRIMARY KEY,
+    qual_title           TEXT         NOT NULL,
+    tp_code              VARCHAR(10)  NOT NULL,
+    aqf_level            VARCHAR(40),
+    status               VARCHAR(20)  NOT NULL DEFAULT 'Current',
+    superseded_by        VARCHAR(20),
+    tga_last_updated     DATE,
+    ingested_at          TIMESTAMPTZ  DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_qual_tp     ON qual_registry(tp_code);
+CREATE INDEX IF NOT EXISTS idx_qual_status ON qual_registry(status);
+
+CREATE TABLE IF NOT EXISTS qual_taxonomy_links (
+    id              SERIAL       PRIMARY KEY,
+    qual_code       VARCHAR(20)  NOT NULL REFERENCES qual_registry(qual_code) ON DELETE CASCADE,
+    scheme          VARCHAR(100) NOT NULL,
+    code            VARCHAR(20),
+    value           TEXT         NOT NULL,
+    pipeline_run_id INTEGER      REFERENCES pipeline_runs(id),
+    created_at      TIMESTAMPTZ  DEFAULT NOW(),
+    UNIQUE (qual_code, scheme, COALESCE(code, ''))
+);
+CREATE INDEX IF NOT EXISTS idx_qtl_qual   ON qual_taxonomy_links(qual_code);
+CREATE INDEX IF NOT EXISTS idx_qtl_scheme ON qual_taxonomy_links(scheme);
+
+CREATE TABLE IF NOT EXISTS uoc_classifications (
+    id              SERIAL       PRIMARY KEY,
+    uoc_code        VARCHAR(20)  NOT NULL REFERENCES uoc_registry(uoc_code) ON DELETE CASCADE,
+    scheme          VARCHAR(100) NOT NULL,
+    code            VARCHAR(20),
+    value           TEXT,
+    pipeline_run_id INTEGER      REFERENCES pipeline_runs(id),
+    created_at      TIMESTAMPTZ  DEFAULT NOW(),
+    UNIQUE (uoc_code, scheme, COALESCE(code, ''))
+);
+
+CREATE TABLE IF NOT EXISTS uoc_qual_memberships (
+    id              SERIAL       PRIMARY KEY,
+    uoc_code        VARCHAR(20)  NOT NULL REFERENCES uoc_registry(uoc_code) ON DELETE CASCADE,
+    qual_code       VARCHAR(20)  NOT NULL REFERENCES qual_registry(qual_code) ON DELETE CASCADE,
+    membership_type VARCHAR(10)  NOT NULL CHECK (membership_type IN ('core','elective')),
+    elective_group  TEXT,
+    owner_tp_code   VARCHAR(10)  NOT NULL,
+    is_imported     BOOLEAN      NOT NULL DEFAULT FALSE,
+    pipeline_run_id INTEGER      REFERENCES pipeline_runs(id),
+    created_at      TIMESTAMPTZ  DEFAULT NOW(),
+    UNIQUE (uoc_code, qual_code, membership_type)
+);
+CREATE INDEX IF NOT EXISTS idx_uqm_uoc      ON uoc_qual_memberships(uoc_code);
+CREATE INDEX IF NOT EXISTS idx_uqm_qual     ON uoc_qual_memberships(qual_code);
+CREATE INDEX IF NOT EXISTS idx_uqm_type     ON uoc_qual_memberships(membership_type);
+CREATE INDEX IF NOT EXISTS idx_uqm_imported ON uoc_qual_memberships(is_imported);
+
+CREATE TABLE IF NOT EXISTS asc_specialist_tasks (
+    task_id           VARCHAR(20)  PRIMARY KEY,
+    task_description  TEXT         NOT NULL,
+    anzsco_code       VARCHAR(10)  NOT NULL,
+    anzsco_title      TEXT,
+    skill_cluster     TEXT,
+    technology_level  VARCHAR(20),
+    created_at        TIMESTAMPTZ  DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS uoc_occupation_links (
+    id                  SERIAL        PRIMARY KEY,
+    uoc_code            VARCHAR(20)   NOT NULL REFERENCES uoc_registry(uoc_code) ON DELETE CASCADE,
+    anzsco_code         VARCHAR(10)   NOT NULL,
+    anzsco_title        TEXT          NOT NULL,
+    anzsco_major_group  TEXT,
+    asced_code          VARCHAR(10),
+    asced_title         TEXT,
+    industry_sector     TEXT,
+    occupation_titles   TEXT,
+    confidence          NUMERIC(4,3)  NOT NULL CHECK (confidence BETWEEN 0 AND 1),
+    mapping_source      VARCHAR(50)   NOT NULL CHECK (mapping_source IN (
+                            'direct_uoc_classification',
+                            'core_native','core_imported',
+                            'elective_native','elective_imported',
+                            'asc_specialist_task'
+                        )),
+    source_qual_code    VARCHAR(20)   REFERENCES qual_registry(qual_code),
+    source_asc_task_id  VARCHAR(20)   REFERENCES asc_specialist_tasks(task_id),
+    is_primary          BOOLEAN       NOT NULL DEFAULT FALSE,
+    pipeline_run_id     INTEGER       NOT NULL REFERENCES pipeline_runs(id),
+    valid_from          TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+    valid_to            TIMESTAMPTZ,
+    created_at          TIMESTAMPTZ   DEFAULT NOW(),
+    UNIQUE (uoc_code, anzsco_code, pipeline_run_id)
+);
+CREATE INDEX IF NOT EXISTS idx_uol_uoc        ON uoc_occupation_links(uoc_code);
+CREATE INDEX IF NOT EXISTS idx_uol_anzsco     ON uoc_occupation_links(anzsco_code);
+CREATE INDEX IF NOT EXISTS idx_uol_confidence ON uoc_occupation_links(confidence);
+CREATE INDEX IF NOT EXISTS idx_uol_primary    ON uoc_occupation_links(uoc_code) WHERE is_primary = TRUE;
+CREATE INDEX IF NOT EXISTS idx_uol_current    ON uoc_occupation_links(uoc_code) WHERE valid_to IS NULL;
+CREATE INDEX IF NOT EXISTS idx_uol_source     ON uoc_occupation_links(mapping_source);
+"""
+
+
+def init_taxonomy_db(engine: Engine) -> None:
+    """Create taxonomy tables. Safe to call on existing DBs."""
+    with engine.begin() as conn:
+        for stmt in _TAXONOMY_DDL.split(";"):
+            stmt = stmt.strip()
+            if stmt:
+                try:
+                    conn.execute(text(stmt))
+                except Exception:
+                    pass  # index/table already exists
+
+
+def start_pipeline_run(engine: Engine, run_type: str = "full",
+                       tp_scope: str | None = None) -> int:
+    with engine.begin() as conn:
+        row = conn.execute(text("""
+            INSERT INTO pipeline_runs (run_type, tp_scope, status)
+            VALUES (:rt, :scope, 'running')
+            RETURNING id
+        """), {"rt": run_type, "scope": tp_scope}).fetchone()
+    return int(row[0])
+
+
+def finish_pipeline_run(engine: Engine, run_id: int, status: str,
+                        quals: int = 0, uocs: int = 0,
+                        created: int = 0, updated: int = 0,
+                        error: str | None = None) -> None:
+    with engine.begin() as conn:
+        conn.execute(text("""
+            UPDATE pipeline_runs
+            SET status=:s, completed_at=NOW(),
+                quals_processed=:q, uocs_processed=:u,
+                links_created=:c, links_updated=:up,
+                error_message=:e
+            WHERE id=:id
+        """), {"s": status, "q": quals, "u": uocs,
+               "c": created, "up": updated, "e": error, "id": run_id})
+
+
+# ---------------------------------------------------------------------------
+# Refinement migrations (Ref 1-4) — safe to run on existing DBs
+# ---------------------------------------------------------------------------
+
+_REFINEMENT_DDL = """
+-- Ref 1 & 3: Add W3C VC alignment fields + evidence to uoc_occupation_links
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+    WHERE table_name='uoc_occupation_links' AND column_name='anzsco_uri')
+  THEN ALTER TABLE uoc_occupation_links
+    ADD COLUMN anzsco_uri        TEXT,
+    ADD COLUMN vc_context        TEXT DEFAULT 'https://www.w3.org/2018/credentials/v1',
+    ADD COLUMN vc_type           TEXT DEFAULT 'TaxonomicAlignment';
+  END IF;
+END $$;
+
+-- Ref 2: Propagate aqf_level + skill_level to occupation links
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+    WHERE table_name='uoc_occupation_links' AND column_name='aqf_level')
+  THEN ALTER TABLE uoc_occupation_links
+    ADD COLUMN aqf_level         TEXT,
+    ADD COLUMN skill_level_label TEXT;
+  END IF;
+END $$;
+
+-- Ref 4: Surface is_imported + owner_tp on occupation links
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+    WHERE table_name='uoc_occupation_links' AND column_name='is_imported')
+  THEN ALTER TABLE uoc_occupation_links
+    ADD COLUMN is_imported       BOOLEAN DEFAULT FALSE,
+    ADD COLUMN owner_tp_code     TEXT,
+    ADD COLUMN home_tp_title     TEXT;
+  END IF;
+END $$;
+
+-- Ref 3: Evidence fields on rsd_skill_records
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+    WHERE table_name='rsd_skill_records' AND column_name='evidence_hash')
+  THEN ALTER TABLE rsd_skill_records
+    ADD COLUMN evidence_hash     TEXT,
+    ADD COLUMN evidence_type     TEXT DEFAULT 'Simulation Performance Data',
+    ADD COLUMN evidence_uri      TEXT,
+    ADD COLUMN element_id        TEXT;
+  END IF;
+END $$;
+"""
+
+
+def init_refinements(engine) -> None:
+    """Apply Ref 1-4 column additions. Safe on existing DBs."""
+    with engine.begin() as conn:
+        for stmt in _REFINEMENT_DDL.strip().split("$$;"):
+            s = stmt.strip()
+            if s:
+                try:
+                    conn.execute(text(s + "$$;"))
+                except Exception:
+                    pass  # column already exists
