@@ -114,9 +114,14 @@ def get_engine(url):
 engine = get_engine(DB_URL)
 
 # Ensure taxonomy tables exist
-from core.db import init_taxonomy_db, init_refinements
-init_taxonomy_db(engine)
-init_refinements(engine)
+try:
+    from core.db import init_taxonomy_db, init_refinements
+    init_taxonomy_db(engine)
+    init_refinements(engine)
+    _taxonomy_ready = True
+except Exception as _e:
+    st.error(f"Taxonomy module not ready: {_e}. Ensure core/linkage_engine.py, core/rsd_record.py and core/tga_ingestor.py are committed to GitHub.")
+    st.stop()
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
@@ -131,7 +136,11 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 # TAB 1 — DASHBOARD
 # ─────────────────────────────────────────────────────────────────────────────
 with tab1:
-    from core.linkage_engine import LinkageEngine
+    try:
+        from core.linkage_engine import LinkageEngine
+    except ImportError as e:
+        st.error(f"core/linkage_engine.py missing from repo: {e}")
+        st.stop()
 
     @st.cache_data(ttl=60, show_spinner=False)
     def get_coverage():
@@ -176,17 +185,20 @@ with tab1:
 
         @st.cache_data(ttl=60)
         def load_anzsco_dist():
-            with engine.connect() as conn:
-                rows = conn.execute(text("""
-                    SELECT o.anzsco_major_group, COUNT(DISTINCT o.uoc_code) AS uoc_count,
-                           ROUND(AVG(o.confidence)::numeric, 3) AS avg_conf
-                    FROM uoc_occupation_links o
-                    WHERE o.is_primary = TRUE AND o.valid_to IS NULL
-                    AND o.anzsco_major_group != ''
-                    GROUP BY o.anzsco_major_group
-                    ORDER BY uoc_count DESC
-                """)).fetchall()
-            return pd.DataFrame(rows, columns=["Major Group","UOC Count","Avg Confidence"])
+            try:
+                with engine.connect() as conn:
+                    rows = conn.execute(text("""
+                        SELECT o.anzsco_major_group, COUNT(DISTINCT o.uoc_code) AS uoc_count,
+                               ROUND(AVG(o.confidence)::numeric, 3) AS avg_conf
+                        FROM uoc_occupation_links o
+                        WHERE o.is_primary = TRUE AND o.valid_to IS NULL
+                        AND o.anzsco_major_group != ''
+                        GROUP BY o.anzsco_major_group
+                        ORDER BY uoc_count DESC
+                    """)).fetchall()
+                return pd.DataFrame(rows, columns=["Major Group","UOC Count","Avg Confidence"])
+            except Exception:
+                return pd.DataFrame()
 
         anzsco_df = load_anzsco_dist()
         if not anzsco_df.empty:
@@ -213,16 +225,19 @@ with tab1:
 
         @st.cache_data(ttl=60)
         def load_source_dist():
-            with engine.connect() as conn:
-                rows = conn.execute(text("""
-                    SELECT mapping_source,
-                           COUNT(DISTINCT uoc_code) AS uocs,
-                           ROUND(AVG(confidence)::numeric, 3) AS avg_conf
-                    FROM uoc_occupation_links
-                    WHERE is_primary = TRUE AND valid_to IS NULL
-                    GROUP BY mapping_source ORDER BY avg_conf DESC
-                """)).fetchall()
-            return pd.DataFrame(rows, columns=["Source","UOCs","Avg Confidence"])
+            try:
+                with engine.connect() as conn:
+                    rows = conn.execute(text("""
+                        SELECT mapping_source,
+                               COUNT(DISTINCT uoc_code) AS uocs,
+                               ROUND(AVG(confidence)::numeric, 3) AS avg_conf
+                        FROM uoc_occupation_links
+                        WHERE is_primary = TRUE AND valid_to IS NULL
+                        GROUP BY mapping_source ORDER BY avg_conf DESC
+                    """)).fetchall()
+                return pd.DataFrame(rows, columns=["Source","UOCs","Avg Confidence"])
+            except Exception:
+                return pd.DataFrame()
 
         src_df = load_source_dist()
         if not src_df.empty:
@@ -255,26 +270,30 @@ with tab1:
 
         @st.cache_data(ttl=60)
         def load_tp_coverage():
-            with engine.connect() as conn:
-                rows = conn.execute(text("""
-                    SELECT s.tp_code,
-                           COUNT(DISTINCT s.unit_code) AS total_uocs,
-                           COUNT(DISTINCT o.uoc_code)  AS linked_uocs,
-                           ROUND(AVG(o.confidence)::numeric,3) AS avg_conf,
-                           COUNT(DISTINCT o.anzsco_code) AS anzsco_count
-                    FROM rsd_skill_records s
-                    LEFT JOIN uoc_occupation_links o
-                        ON o.uoc_code = s.unit_code
-                        AND o.is_primary = TRUE AND o.valid_to IS NULL
-                    WHERE s.tp_code IS NOT NULL AND s.tp_code != ''
-                    GROUP BY s.tp_code ORDER BY total_uocs DESC
-                """)).fetchall()
-            df = pd.DataFrame(rows, columns=[
-                "TP","Total UOCs","Linked","Avg Conf","ANZSCO Count"])
-            df["Coverage %"] = (
-                100 * df["Linked"] / df["Total UOCs"].clip(lower=1)
-            ).round(1).astype(str) + "%"
-            return df
+            try:
+                with engine.connect() as conn:
+                    rows = conn.execute(text("""
+                        SELECT s.tp_code,
+                               COUNT(DISTINCT s.unit_code) AS total_uocs,
+                               COUNT(DISTINCT o.uoc_code)  AS linked_uocs,
+                               ROUND(AVG(o.confidence)::numeric,3) AS avg_conf,
+                               COUNT(DISTINCT o.anzsco_code) AS anzsco_count
+                        FROM rsd_skill_records s
+                        LEFT JOIN uoc_occupation_links o
+                            ON o.uoc_code = s.unit_code
+                            AND o.is_primary = TRUE AND o.valid_to IS NULL
+                        WHERE s.tp_code IS NOT NULL AND s.tp_code != ''
+                        GROUP BY s.tp_code ORDER BY total_uocs DESC
+                    """)).fetchall()
+                df = pd.DataFrame(rows, columns=[
+                    "TP","Total UOCs","Linked","Avg Conf","ANZSCO Count"])
+                df["Coverage %"] = (
+                    100 * df["Linked"] / df["Total UOCs"].clip(lower=1)
+                ).round(1).astype(str) + "%"
+                return df
+            except Exception:
+                return pd.DataFrame()
+
 
         tp_df = load_tp_coverage()
         if not tp_df.empty:
