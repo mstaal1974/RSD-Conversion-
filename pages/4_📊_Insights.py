@@ -240,7 +240,10 @@ tp_stats = (
 tp_stats["avg_words"] = tp_stats["avg_words"].fillna(35)
 tp_stats["label"]     = tp_stats["tp_code"] + " (" + tp_stats["count"].astype(str) + ")"
 
-bubble = alt.Chart(tp_stats).mark_circle(opacity=0.85, stroke="white", strokeWidth=0.5).encode(
+if tp_stats.empty:
+    st.info("No training package data available yet.")
+else:
+ bubble = alt.Chart(tp_stats).mark_circle(opacity=0.85, stroke="white", strokeWidth=0.5).encode(
     x=alt.X("avg_words:Q",
             title="Avg statement word count",
             scale=alt.Scale(domain=[
@@ -491,8 +494,12 @@ with col_qa1:
     # Word count distribution per TP
     wc_df = df[df["qa_word_count"].notna()].copy()
     wc_df["qa_word_count"] = wc_df["qa_word_count"].astype(float)
+    wc_df = wc_df[wc_df["qa_word_count"] > 0]
 
-    wc_chart = alt.Chart(wc_df).mark_bar(
+    if wc_df.empty:
+        st.info("No word count data available.")
+    else:
+     wc_chart = alt.Chart(wc_df).mark_bar(
         color="#38bdf8", opacity=0.8,
         cornerRadiusTopLeft=2, cornerRadiusTopRight=2,
     ).encode(
@@ -525,9 +532,12 @@ with col_qa2:
         .reset_index()
     )
     qa_by_tp["rate"] = (100 * qa_by_tp["passed"] / qa_by_tp["total"].clip(lower=1)).round(1)
-    qa_by_tp = qa_by_tp.sort_values("rate", ascending=True)
+    qa_by_tp = qa_by_tp[qa_by_tp["total"] > 0].sort_values("rate", ascending=True)
 
-    qa_bar = alt.Chart(qa_by_tp).mark_bar(
+    if qa_by_tp.empty:
+        st.info("No QA data available.")
+    else:
+     qa_bar = alt.Chart(qa_by_tp).mark_bar(
         cornerRadiusTopRight=4, cornerRadiusBottomRight=4,
     ).encode(
         y=alt.Y("tp_code:N", sort=None, title=""),
