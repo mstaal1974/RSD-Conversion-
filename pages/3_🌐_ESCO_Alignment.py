@@ -86,8 +86,8 @@ with st.sidebar:
         )).mappings().all()
     runs = [dict(r) for r in runs]
 
-    run_options = ["All runs"] + [f"{r['id'][:8]}… {r['source_filename']}" for r in runs]
-    run_ids     = [None] + [r["id"] for r in runs]
+    run_options = ["All runs"] + [f"{str(r['id'])[:8]}… {r['source_filename']}" for r in runs]
+    run_ids     = [None] + [str(r["id"]) for r in runs]
     selected_run_label = st.selectbox("Source run", run_options)
     selected_run_id    = run_ids[run_options.index(selected_run_label)]
 
