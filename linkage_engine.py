@@ -412,29 +412,48 @@ class LinkageEngine:
         return pd.DataFrame([dict(r) for r in rows])
 
     @staticmethod
+    def tables_exist(engine: Engine) -> bool:
+        """Check whether taxonomy tables have been created."""
+        try:
+            with engine.connect() as conn:
+                row = conn.execute(text("""
+                    SELECT COUNT(*) FROM information_schema.tables
+                    WHERE table_schema = 'public'
+                    AND table_name = 'uoc_occupation_links'
+                """)).fetchone()
+            return bool(row and row[0] > 0)
+        except Exception:
+            return False
+
+    @staticmethod
     def coverage_stats(engine: Engine) -> dict:
         """Return coverage statistics for the taxonomy page dashboard."""
-        with engine.connect() as conn:
-            stats = conn.execute(text("""
-                SELECT
-                    COUNT(DISTINCT s.unit_code) AS total_uocs,
-                    COUNT(DISTINCT CASE WHEN o.uoc_code IS NOT NULL
-                          THEN s.unit_code END) AS linked_uocs,
-                    COUNT(DISTINCT CASE WHEN o.confidence >= 0.70
-                          THEN s.unit_code END) AS high_conf_uocs,
-                    COUNT(DISTINCT o.anzsco_code) AS unique_anzsco,
-                    COUNT(DISTINCT o.anzsco_major_group) AS major_groups,
-                    ROUND(AVG(o.confidence)::numeric, 3) AS avg_confidence
-                FROM rsd_skill_records s
-                LEFT JOIN uoc_occupation_links o
-                    ON o.uoc_code = s.unit_code
-                    AND o.is_primary = TRUE
-                    AND o.valid_to IS NULL
-            """)).fetchone()
-        if stats:
-            return dict(zip(
-                ["total_uocs","linked_uocs","high_conf_uocs",
-                 "unique_anzsco","major_groups","avg_confidence"],
-                stats
-            ))
+        if not LinkageEngine.tables_exist(engine):
+            return {}
+        try:
+            with engine.connect() as conn:
+                stats = conn.execute(text("""
+                    SELECT
+                        COUNT(DISTINCT s.unit_code) AS total_uocs,
+                        COUNT(DISTINCT CASE WHEN o.uoc_code IS NOT NULL
+                              THEN s.unit_code END) AS linked_uocs,
+                        COUNT(DISTINCT CASE WHEN o.confidence >= 0.70
+                              THEN s.unit_code END) AS high_conf_uocs,
+                        COUNT(DISTINCT o.anzsco_code) AS unique_anzsco,
+                        COUNT(DISTINCT o.anzsco_major_group) AS major_groups,
+                        ROUND(AVG(o.confidence)::numeric, 3) AS avg_confidence
+                    FROM rsd_skill_records s
+                    LEFT JOIN uoc_occupation_links o
+                        ON o.uoc_code = s.unit_code
+                        AND o.is_primary = TRUE
+                        AND o.valid_to IS NULL
+                """)).fetchone()
+            if stats:
+                return dict(zip(
+                    ["total_uocs","linked_uocs","high_conf_uocs",
+                     "unique_anzsco","major_groups","avg_confidence"],
+                    stats
+                ))
+        except Exception:
+            pass
         return {}
