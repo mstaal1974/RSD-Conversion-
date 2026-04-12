@@ -24,3 +24,6 @@ matplotlib>=3.8,<4.0
 
 # Utilities
 rich>=13.0,<14.0
+
+# TGA SOAP web services
+zeep>=4.2,<5.0
