@@ -188,7 +188,7 @@ class TGAIngestor:
                 self._ingest_qual_soap(client, qual, counts)
                 counts["quals"] += 1
             except Exception as e:
-                log.error("Failed to ingest %s: %s", _v(qual, "Code"), e)
+                raise  # temporary — expose first error
 
         if progress_callback:
             progress_callback(1.0, f"Ingested {counts['quals']} qualifications")
