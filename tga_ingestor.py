@@ -193,6 +193,7 @@ class TGAIngestor:
         return counts
 
     def _ingest_qual_soap(self, client, qual_summary, counts):
+        """DEBUG: print GetDetails field names and raise after first qual."""
         code = _v(qual_summary, "Code")
         time.sleep(RATE_LIMIT)
 
@@ -200,71 +201,40 @@ class TGAIngestor:
             request={"Code": code, "InformationRequest": None}
         )
 
-        # DEBUG: log all available attributes on the detail object
-        if detail is not None:
-            attrs = [a for a in dir(detail) if not a.startswith('_')]
-            log.info("GetDetails attrs for %s: %s", code, attrs)
-        else:
-            log.warning("GetDetails returned None for %s", code)
-            return
+        print(f"\n{'=' * 60}")
+        print(f"DEBUG _ingest_qual_soap  —  code={code}")
+        print(f"{'=' * 60}")
 
-        self._upsert_qual(
-            code=code,
-            title=_v(qual_summary, "Title"),
-            tp_code=code[:3],
-            aqf_level=_v(detail, "AQFLevel") or None,
-            status="Current",
+        if detail is None:
+            print("  GetDetails returned None")
+            raise RuntimeError(f"DEBUG STOP: GetDetails returned None for {code}")
+
+        # Top-level field names (public attrs)
+        top_attrs = sorted(a for a in dir(detail) if not a.startswith('_'))
+        print(f"\nTop-level attributes ({len(top_attrs)}):")
+        for attr in top_attrs:
+            val = getattr(detail, attr, "<access-error>")
+            type_name = type(val).__name__
+            # Summarise value: show scalars, length for collections
+            if isinstance(val, (str, int, float, bool, type(None))):
+                preview = repr(val)
+            elif isinstance(val, (list, tuple)):
+                preview = f"[{len(val)} items]"
+            else:
+                # Zeep complex object — list its own children
+                sub_attrs = sorted(
+                    s for s in dir(val) if not s.startswith('_')
+                )
+                preview = f"<{type_name}> sub-fields={sub_attrs}"
+            print(f"  {attr:40s}  {preview}")
+
+        print(f"\n{'=' * 60}")
+        print("DEBUG STOP — raising after first qualification")
+        print(f"{'=' * 60}\n")
+        raise RuntimeError(
+            f"DEBUG STOP after first qual ({code}). "
+            "Check stdout for GetDetails field names."
         )
-
-        # Classifications — try multiple possible field names
-        for cls in (_safe_list(detail, "Classifications", "Classification") or
-                    _safe_list(detail, "ClassificationList", "Classification") or []):
-            self._upsert_qual_taxonomy(
-                qual_code=code,
-                scheme=_v(cls, "Scheme"),
-                code=_v(cls, "Code") or None,
-                value=_v(cls, "Value"),
-            )
-
-        # Core units — try multiple possible field names
-        core_units = (
-            _safe_list(detail, "CoreUnits", "Unit") or
-            _safe_list(detail, "CoreUnits", "TrainingComponent") or
-            _safe_list(detail, "Units", "Unit") or
-            []
-        )
-        log.info("Core units for %s: %d", code, len(core_units))
-        for u in core_units:
-            uoc_code = _v(u, "Code")
-            if not uoc_code:
-                continue
-            is_imported = not uoc_code.startswith(code[:3])
-            self._upsert_uoc(uoc_code, _v(u, "Title"), uoc_code[:3])
-            self._upsert_membership(uoc_code, code, "core", None,
-                                    uoc_code[:3], is_imported)
-            counts["uocs"] += 1
-            counts["memberships"] += 1
-
-        # Elective groups — try multiple possible field names
-        elective_groups = (
-            _safe_list(detail, "ElectiveGroups", "ElectiveGroup") or
-            _safe_list(detail, "ElectiveUnits", "ElectiveGroup") or
-            []
-        )
-        log.info("Elective groups for %s: %d", code, len(elective_groups))
-        for grp in elective_groups:
-            grp_name = _v(grp, "GroupName") or None
-            for u in (_safe_list(grp, "ElectiveUnits", "Unit") or
-                      _safe_list(grp, "Units", "Unit") or []):
-                uoc_code = _v(u, "Code")
-                if not uoc_code:
-                    continue
-                is_imported = not uoc_code.startswith(code[:3])
-                self._upsert_uoc(uoc_code, _v(u, "Title"), uoc_code[:3])
-                self._upsert_membership(uoc_code, code, "elective", grp_name,
-                                        uoc_code[:3], is_imported)
-                counts["uocs"] += 1
-                counts["memberships"] += 1
 
     def _run_rest(self, tp_codes, progress_callback, counts) -> dict:
         if progress_callback:
