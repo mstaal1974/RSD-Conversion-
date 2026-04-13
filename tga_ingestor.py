@@ -134,15 +134,13 @@ class TGAIngestor:
         if progress_callback:
             progress_callback(0.05, "Fetching current qualifications from TGA…")
 
-        filter_obj = {
-            "ClassificationFilters":   None,
-            "FieldOfEducationFilters": None,
-            "IncludeSuperseded":       False,
-            "TrainingPackageCode":     tp_codes[0] if tp_codes and len(tp_codes) == 1 else None,
-        }
+        tp_code_single = tp_codes[0] if tp_codes and len(tp_codes) == 1 else None
 
         search_result = client.service.Search({
-            "Filter":   filter_obj,
+            "Filter": {
+                "IncludeSuperseded":  False,
+                "TrainingPackageCode": tp_code_single,
+            },
             "StartRow": 1,
             "RowCount": 500,
             "OrderBy":  "Code",
