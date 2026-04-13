@@ -2,6 +2,13 @@
 tga_ingestor.py  (root-level, used by linkage_engine and admin pages)
 
 TGA National Training Register ingestion via SOAP web services.
+
+Verified GetDetails response structure:
+  - Classifications.Classification[].SchemeCode / ValueCode
+  - CompletionMapping.NrtCompletion[].Code / IsMandatory
+  - Releases.Release[0].UnitGrid.UnitGridEntry[].Code / Title
+  - ParentCode = TP code
+  - ParentTitle = TP title
 """
 from __future__ import annotations
 import os
@@ -57,12 +64,10 @@ class TGAIngestor:
                 from zeep import Client
                 from zeep.wsse.username import UsernameToken
                 wsdl = _ENDPOINTS[self.env][service]
-                log.info("Connecting to TGA %s (%s): %s", service, self.env, wsdl)
                 self._clients[service] = Client(
                     wsdl,
                     wsse=UsernameToken(self.username, self.password),
                 )
-                log.info("TGA %s client ready", service)
             except Exception as e:
                 raise RuntimeError(f"TGA SOAP connection failed ({service}): {e}") from e
         return self._clients[service]
@@ -70,14 +75,6 @@ class TGAIngestor:
     @property
     def _training_client(self):
         return self._get_client("training")
-
-    @property
-    def _org_client(self):
-        return self._get_client("organisation")
-
-    @property
-    def _class_client(self):
-        return self._get_client("classification")
 
     def _rest_search_qualifications(self, tp_code: str | None = None) -> list[dict]:
         import urllib.request, urllib.parse, json
@@ -182,6 +179,8 @@ class TGAIngestor:
         return counts
 
     def _ingest_qual_soap(self, client, qual_summary, counts):
+        from zeep.helpers import serialize_object
+
         code = _v(qual_summary, "Code")
         time.sleep(RATE_LIMIT)
 
@@ -190,78 +189,72 @@ class TGAIngestor:
         )
 
         if detail is None:
-            print(f"WARNING: GetDetails returned None for {code}", flush=True)
             return
 
-        # DEBUG: print all field names on first call so we can see the structure
-        if counts["quals"] == 0:
-            attrs = [a for a in dir(detail) if not a.startswith('_')]
-            print(f"DEBUG GetDetails fields for {code}: {attrs}", flush=True)
-            # Also print zeep serialized dict
-            try:
-                from zeep.helpers import serialize_object
-                d = serialize_object(detail)
-                print(f"DEBUG GetDetails data for {code}: {dict(d)}", flush=True)
-            except Exception as ex:
-                print(f"DEBUG serialize failed: {ex}", flush=True)
+        # Serialize zeep object to plain dict
+        d = dict(serialize_object(detail))
+
+        title      = _vd(d, "Title", "")
+        tp_code    = _vd(d, "ParentCode", code[:3])
+        tp_title   = _vd(d, "ParentTitle", "")
 
         self._upsert_qual(
             code=code,
-            title=_v(qual_summary, "Title"),
-            tp_code=code[:3],
-            aqf_level=_v(detail, "AQFLevel") or None,
+            title=title or _v(qual_summary, "Title"),
+            tp_code=tp_code,
+            aqf_level=None,
             status="Current",
         )
 
-        # Classifications
-        for cls in _safe_list(detail, "Classifications", "Classification"):
-            self._upsert_qual_taxonomy(
-                qual_code=code,
-                scheme=_v(cls, "Scheme"),
-                code=_v(cls, "Code") or None,
-                value=_v(cls, "Value"),
-            )
+        # ── Classifications ───────────────────────────────────────────────────
+        # Fields: SchemeCode, ValueCode (NOT Scheme/Value)
+        cls_list = _nested_list(d, "Classifications", "Classification")
+        for cls in cls_list:
+            scheme = _vd(cls, "SchemeCode", "")
+            value  = _vd(cls, "ValueCode", "")
+            if scheme and value:
+                self._upsert_qual_taxonomy(
+                    qual_code=code,
+                    scheme=scheme,
+                    code=None,
+                    value=value,
+                )
 
-        # Core units — try all known field name variants
-        core_units = (
-            _safe_list(detail, "CoreUnits", "Unit") or
-            _safe_list(detail, "CoreUnits", "TrainingComponent") or
-            _safe_list(detail, "PackagingRules", "CoreUnits") or
-            []
-        )
-        if counts["quals"] == 0:
-            print(f"DEBUG core_units count for {code}: {len(core_units)}", flush=True)
+        # ── Unit titles from UnitGrid ─────────────────────────────────────────
+        # Build code->title lookup from Releases.Release[0].UnitGrid.UnitGridEntry
+        unit_titles: dict[str, str] = {}
+        releases = _nested_list(d, "Releases", "Release")
+        if releases:
+            latest = releases[0] if isinstance(releases, list) else releases
+            for entry in _nested_list(latest, "UnitGrid", "UnitGridEntry"):
+                uc = _vd(entry, "Code", "")
+                ut = _vd(entry, "Title", "")
+                if uc:
+                    unit_titles[uc] = ut
 
-        for u in core_units:
-            uoc_code = _v(u, "Code")
+        # ── Packaging rules from CompletionMapping.NrtCompletion ─────────────
+        # IsMandatory=True -> core, IsMandatory=False -> elective
+        completions = _nested_list(d, "CompletionMapping", "NrtCompletion")
+        for comp in completions:
+            uoc_code   = _vd(comp, "Code", "")
+            is_mandatory = comp.get("IsMandatory", False)
             if not uoc_code:
                 continue
-            is_imported = not uoc_code.startswith(code[:3])
-            self._upsert_uoc(uoc_code, _v(u, "Title"), uoc_code[:3])
-            self._upsert_membership(uoc_code, code, "core", None,
-                                    uoc_code[:3], is_imported)
+            uoc_title  = unit_titles.get(uoc_code, "")
+            is_imported = not uoc_code.startswith(tp_code[:3])
+            mtype      = "core" if is_mandatory else "elective"
+
+            self._upsert_uoc(uoc_code, uoc_title, uoc_code[:3])
+            self._upsert_membership(
+                uoc_code=uoc_code,
+                qual_code=code,
+                mtype=mtype,
+                group=None,
+                owner_tp=uoc_code[:3],
+                is_imported=is_imported,
+            )
             counts["uocs"] += 1
             counts["memberships"] += 1
-
-        # Elective groups — try all known field name variants
-        elective_groups = (
-            _safe_list(detail, "ElectiveGroups", "ElectiveGroup") or
-            _safe_list(detail, "ElectiveUnits", "ElectiveGroup") or
-            []
-        )
-        for grp in elective_groups:
-            grp_name = _v(grp, "GroupName") or None
-            for u in (_safe_list(grp, "ElectiveUnits", "Unit") or
-                      _safe_list(grp, "Units", "Unit") or []):
-                uoc_code = _v(u, "Code")
-                if not uoc_code:
-                    continue
-                is_imported = not uoc_code.startswith(code[:3])
-                self._upsert_uoc(uoc_code, _v(u, "Title"), uoc_code[:3])
-                self._upsert_membership(uoc_code, code, "elective", grp_name,
-                                        uoc_code[:3], is_imported)
-                counts["uocs"] += 1
-                counts["memberships"] += 1
 
     def _run_rest(self, tp_codes, progress_callback, counts) -> dict:
         if progress_callback:
@@ -386,14 +379,40 @@ class TGAIngestor:
         return count
 
 
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 def _v(obj, key: str, default: str = "") -> str:
+    """Extract string from zeep object."""
     if obj is None:
         return default
     val = obj.get(key, default) if isinstance(obj, dict) else getattr(obj, key, default)
     return str(val) if val is not None else default
 
 
+def _vd(d: dict, key: str, default: str = "") -> str:
+    """Extract string from plain dict."""
+    val = d.get(key, default)
+    return str(val) if val is not None else default
+
+
+def _nested_list(d: dict, *keys: str) -> list:
+    """Safely traverse nested dict keys and return a list."""
+    obj = d
+    for k in keys:
+        if obj is None:
+            return []
+        if isinstance(obj, dict):
+            obj = obj.get(k)
+        else:
+            return []
+    if obj is None:
+        return []
+    return obj if isinstance(obj, list) else [obj]
+
+
 def _safe_list(response, *keys: str) -> list:
+    """Traverse zeep object keys and return a list."""
     obj = response
     for k in keys:
         if obj is None:
