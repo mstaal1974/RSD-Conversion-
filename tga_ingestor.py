@@ -136,15 +136,31 @@ class TGAIngestor:
 
         tp_code_single = tp_codes[0] if tp_codes and len(tp_codes) == 1 else None
 
-        search_result = client.service.Search({
-            "Filter": {
-                "IncludeSuperseded":  False,
-                "TrainingPackageCode": tp_code_single,
-            },
-            "StartRow": 1,
-            "RowCount": 500,
-            "OrderBy":  "Code",
-        })
+        # Use zeep type factory to build request — avoids collection-in-string errors
+        try:
+            factory = client.type_factory("ns0")
+            filt = factory.SearchFilter(
+                IncludeSuperseded=False,
+                TrainingPackageCode=tp_code_single,
+            )
+            search_result = client.service.Search(
+                Filter=filt,
+                StartRow=1,
+                RowCount=500,
+                OrderBy="Code",
+            )
+        except Exception as e1:
+            log.warning("Factory Search failed (%s), trying keyword args", e1)
+            try:
+                search_result = client.service.Search(
+                    Filter={"IncludeSuperseded": False,
+                            "TrainingPackageCode": tp_code_single},
+                    StartRow=1,
+                    RowCount=500,
+                    OrderBy="Code",
+                )
+            except Exception as e2:
+                raise RuntimeError(f"SOAP Search failed: {e2}") from e2
 
         quals = _safe_list(search_result, "Results", "TrainingComponentSummary")
         quals = [q for q in quals
@@ -175,7 +191,12 @@ class TGAIngestor:
     def _ingest_qual_soap(self, client, qual_summary, counts):
         code = _v(qual_summary, "Code")
         time.sleep(RATE_LIMIT)
-        detail = client.service.GetDetails({"Code": code, "ShowReleases": False})
+        # Use keyword args — avoids zeep collection-in-string validation errors
+        try:
+            detail = client.service.GetDetails(Code=code, ShowReleases=False)
+        except Exception:
+            detail = client.service.GetDetails(Code=code)
+
         self._upsert_qual(
             code=code,
             title=_v(qual_summary, "Title"),
