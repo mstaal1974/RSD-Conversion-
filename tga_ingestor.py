@@ -2,6 +2,13 @@
 tga_ingestor.py  (root-level, used by linkage_engine and admin pages)
 
 TGA National Training Register ingestion via SOAP web services.
+
+Actual WSDL signature for Search:
+  PageNumber, PageSize, ClassificationFilters, Filter, IncludeDeleted,
+  IncludeSuperseeded, SearchCode, SearchTitle, TrainingComponentTypes
+
+Actual WSDL signature for GetDetails:
+  Code, InformationRequest
 """
 from __future__ import annotations
 import os
@@ -134,30 +141,36 @@ class TGAIngestor:
         if progress_callback:
             progress_callback(0.05, "Fetching current qualifications from TGA…")
 
-        tp_code_single = tp_codes[0] if tp_codes and len(tp_codes) == 1 else None
+        # Build filter string — TP code prefix search e.g. "MSL"
+        filter_str = tp_codes[0] if tp_codes and len(tp_codes) == 1 else ""
 
-        # API takes a single 'request' object — not keyword args
+        # Correct WSDL signature:
+        # PageNumber, PageSize, Filter(string), IncludeSuperseeded,
+        # SearchCode, SearchTitle, TrainingComponentTypes
         search_result = client.service.Search(
             request={
-                "Filter": {
-                    "IncludeSuperseded":   False,
-                    "TrainingPackageCode": tp_code_single,
+                "PageNumber":            1,
+                "PageSize":              500,
+                "Filter":                filter_str,
+                "IncludeDeleted":        False,
+                "IncludeSuperseeded":    False,
+                "SearchCode":            True,
+                "SearchTitle":           False,
+                "TrainingComponentTypes": {
+                    "TrainingComponentTypeFilter": "Qualification"
                 },
-                "StartRow": 1,
-                "RowCount": 500,
-                "OrderBy":  "Code",
             }
         )
 
         quals = _safe_list(search_result, "Results", "TrainingComponentSummary")
-        quals = [q for q in quals
-                 if _v(q, "TrainingComponentType") in ("Qualification", "")]
+
+        # If multiple TPs requested, filter in Python
         if tp_codes and len(tp_codes) > 1:
             quals = [q for q in quals
                      if any(_v(q, "Code").startswith(tp) for tp in tp_codes)]
 
         total = len(quals)
-        log.info("Found %d current qualifications", total)
+        log.info("Found %d qualifications", total)
 
         for i, qual in enumerate(quals):
             if progress_callback:
@@ -179,10 +192,17 @@ class TGAIngestor:
         code = _v(qual_summary, "Code")
         time.sleep(RATE_LIMIT)
 
-        # API takes a single 'request' object
-        detail = client.service.GetDetails(
-            request={"Code": code, "ShowReleases": False}
-        )
+        # GetDetails — discover signature on first failure
+        try:
+            detail = client.service.GetDetails(
+                request={"Code": code, "InformationRequest": None}
+            )
+        except TypeError as e:
+            # Log signature so we can see exact params
+            raise RuntimeError(
+                f"GetDetails signature mismatch for {code}: {e}. "
+                f"Available ops: {list(client.service._operations.keys())}"
+            ) from e
 
         self._upsert_qual(
             code=code,
