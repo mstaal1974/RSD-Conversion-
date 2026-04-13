@@ -973,7 +973,7 @@ with tab5:
             )
             .reset_index()
         )
-       summary["avg_confidence"] = pd.to_numeric(summary["avg_confidence"], errors="coerce").round(3)
+        summary["avg_confidence"] = pd.to_numeric(summary["avg_confidence"], errors="coerce").round(3)
         summary = summary.sort_values("stmt_count", ascending=False)
 
         c3.download_button(
