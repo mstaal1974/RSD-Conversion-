@@ -2,14 +2,6 @@
 tga_ingestor.py  (root-level, used by linkage_engine and admin pages)
 
 TGA National Training Register ingestion via SOAP web services.
-
-Verified WSDL signatures:
-  Search(request: TrainingComponentSearchRequest)
-    - PageNumber, PageSize, Filter(string), IncludeDeleted, IncludeSuperseeded,
-      SearchCode, SearchTitle, TrainingComponentTypes(IncludeQualification etc.)
-
-  GetDetails(request: ...)
-    - Code, InformationRequest
 """
 from __future__ import annotations
 import os
@@ -142,8 +134,6 @@ class TGAIngestor:
         if progress_callback:
             progress_callback(0.05, "Fetching current qualifications from TGA…")
 
-        # Filter is plain text search — empty string returns all results
-        # then we filter by TP code in Python
         search_result = client.service.Search(
             request={
                 "PageNumber":         1,
@@ -166,15 +156,14 @@ class TGAIngestor:
         )
 
         quals = _safe_list(search_result, "Results", "TrainingComponentSummary")
-        log.info("Search returned %d total results", len(quals))
+        print(f"TGA Search returned {len(quals)} total results", flush=True)
 
         if tp_codes:
             quals = [q for q in quals
                      if any(_v(q, "Code").startswith(tp) for tp in tp_codes)]
-            log.info("After TP filter (%s): %d qualifications", tp_codes, len(quals))
+            print(f"After TP filter {tp_codes}: {len(quals)} qualifications", flush=True)
 
         total = len(quals)
-        log.info("Found %d qualifications", total)
 
         for i, qual in enumerate(quals):
             if progress_callback:
@@ -186,7 +175,7 @@ class TGAIngestor:
                 self._ingest_qual_soap(client, qual, counts)
                 counts["quals"] += 1
             except Exception as e:
-                log.error("Failed to ingest %s: %s", _v(qual, "Code"), e)
+                print(f"ERROR ingesting {_v(qual, 'Code')}: {e}", flush=True)
 
         if progress_callback:
             progress_callback(1.0, f"Ingested {counts['quals']} qualifications")
@@ -200,13 +189,21 @@ class TGAIngestor:
             request={"Code": code, "InformationRequest": None}
         )
 
-        # DEBUG: log all available attributes on the detail object
-        if detail is not None:
-            attrs = [a for a in dir(detail) if not a.startswith('_')]
-            log.info("GetDetails attrs for %s: %s", code, attrs)
-        else:
-            log.warning("GetDetails returned None for %s", code)
+        if detail is None:
+            print(f"WARNING: GetDetails returned None for {code}", flush=True)
             return
+
+        # DEBUG: print all field names on first call so we can see the structure
+        if counts["quals"] == 0:
+            attrs = [a for a in dir(detail) if not a.startswith('_')]
+            print(f"DEBUG GetDetails fields for {code}: {attrs}", flush=True)
+            # Also print zeep serialized dict
+            try:
+                from zeep.helpers import serialize_object
+                d = serialize_object(detail)
+                print(f"DEBUG GetDetails data for {code}: {dict(d)}", flush=True)
+            except Exception as ex:
+                print(f"DEBUG serialize failed: {ex}", flush=True)
 
         self._upsert_qual(
             code=code,
@@ -216,9 +213,8 @@ class TGAIngestor:
             status="Current",
         )
 
-        # Classifications — try multiple possible field names
-        for cls in (_safe_list(detail, "Classifications", "Classification") or
-                    _safe_list(detail, "ClassificationList", "Classification") or []):
+        # Classifications
+        for cls in _safe_list(detail, "Classifications", "Classification"):
             self._upsert_qual_taxonomy(
                 qual_code=code,
                 scheme=_v(cls, "Scheme"),
@@ -226,14 +222,16 @@ class TGAIngestor:
                 value=_v(cls, "Value"),
             )
 
-        # Core units — try multiple possible field names
+        # Core units — try all known field name variants
         core_units = (
             _safe_list(detail, "CoreUnits", "Unit") or
             _safe_list(detail, "CoreUnits", "TrainingComponent") or
-            _safe_list(detail, "Units", "Unit") or
+            _safe_list(detail, "PackagingRules", "CoreUnits") or
             []
         )
-        log.info("Core units for %s: %d", code, len(core_units))
+        if counts["quals"] == 0:
+            print(f"DEBUG core_units count for {code}: {len(core_units)}", flush=True)
+
         for u in core_units:
             uoc_code = _v(u, "Code")
             if not uoc_code:
@@ -245,13 +243,12 @@ class TGAIngestor:
             counts["uocs"] += 1
             counts["memberships"] += 1
 
-        # Elective groups — try multiple possible field names
+        # Elective groups — try all known field name variants
         elective_groups = (
             _safe_list(detail, "ElectiveGroups", "ElectiveGroup") or
             _safe_list(detail, "ElectiveUnits", "ElectiveGroup") or
             []
         )
-        log.info("Elective groups for %s: %d", code, len(elective_groups))
         for grp in elective_groups:
             grp_name = _v(grp, "GroupName") or None
             for u in (_safe_list(grp, "ElectiveUnits", "Unit") or
@@ -277,7 +274,6 @@ class TGAIngestor:
         quals = [q for q in all_quals
                  if q["code"] not in seen and not seen.add(q["code"])]
         total = len(quals)
-        log.info("Found %d qualifications via REST", total)
         for i, q in enumerate(quals):
             if progress_callback:
                 progress_callback(
