@@ -378,7 +378,7 @@ with tab2:
 
     if st.button("▶ Seed from rsd_skill_records", type="primary"):
         from core.db import start_pipeline_run, finish_pipeline_run
-        from core.tga_ingestor import TGAIngestor
+        from tga_ingestor import TGAIngestor
 
         rid = start_pipeline_run(engine, run_type="seed")
         ingestor = TGAIngestor(engine, TGA_USER, TGA_PASS, pipeline_run_id=rid)
