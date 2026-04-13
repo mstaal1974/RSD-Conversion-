@@ -3,12 +3,13 @@ tga_ingestor.py  (root-level, used by linkage_engine and admin pages)
 
 TGA National Training Register ingestion via SOAP web services.
 
-Actual WSDL signature for Search:
-  PageNumber, PageSize, ClassificationFilters, Filter, IncludeDeleted,
-  IncludeSuperseeded, SearchCode, SearchTitle, TrainingComponentTypes
+Verified WSDL signatures:
+  Search(request: TrainingComponentSearchRequest)
+    - PageNumber, PageSize, Filter(string), IncludeDeleted, IncludeSuperseeded,
+      SearchCode, SearchTitle, TrainingComponentTypes(IncludeQualification etc.)
 
-Actual WSDL signature for GetDetails:
-  Code, InformationRequest
+  GetDetails(request: ...)
+    - Code, InformationRequest
 """
 from __future__ import annotations
 import os
@@ -141,21 +142,17 @@ class TGAIngestor:
         if progress_callback:
             progress_callback(0.05, "Fetching current qualifications from TGA…")
 
-        # Build filter string — TP code prefix search e.g. "MSL"
-        filter_str = tp_codes[0] if tp_codes and len(tp_codes) == 1 else ""
-
-        # Correct WSDL signature:
-        # PageNumber, PageSize, Filter(string), IncludeSuperseeded,
-        # SearchCode, SearchTitle, TrainingComponentTypes
+        # Filter is plain text search — empty string returns all results
+        # then we filter by TP code in Python
         search_result = client.service.Search(
             request={
-                "PageNumber":            1,
-                "PageSize":              500,
-                "Filter":                filter_str,
-                "IncludeDeleted":        False,
-                "IncludeSuperseeded":    False,
-                "SearchCode":            True,
-                "SearchTitle":           False,
+                "PageNumber":         1,
+                "PageSize":           500,
+                "Filter":             "",
+                "IncludeDeleted":     False,
+                "IncludeSuperseeded": False,
+                "SearchCode":         True,
+                "SearchTitle":        True,
                 "TrainingComponentTypes": {
                     "IncludeQualification":          True,
                     "IncludeUnit":                   False,
@@ -169,11 +166,12 @@ class TGAIngestor:
         )
 
         quals = _safe_list(search_result, "Results", "TrainingComponentSummary")
+        log.info("Search returned %d total results", len(quals))
 
-        # If multiple TPs requested, filter in Python
-        if tp_codes and len(tp_codes) > 1:
+        if tp_codes:
             quals = [q for q in quals
                      if any(_v(q, "Code").startswith(tp) for tp in tp_codes)]
+            log.info("After TP filter (%s): %d qualifications", tp_codes, len(quals))
 
         total = len(quals)
         log.info("Found %d qualifications", total)
@@ -188,7 +186,7 @@ class TGAIngestor:
                 self._ingest_qual_soap(client, qual, counts)
                 counts["quals"] += 1
             except Exception as e:
-                raise  # temporary — expose first error
+                log.error("Failed to ingest %s: %s", _v(qual, "Code"), e)
 
         if progress_callback:
             progress_callback(1.0, f"Ingested {counts['quals']} qualifications")
@@ -198,17 +196,17 @@ class TGAIngestor:
         code = _v(qual_summary, "Code")
         time.sleep(RATE_LIMIT)
 
-        # GetDetails — discover signature on first failure
-        try:
-            detail = client.service.GetDetails(
-                request={"Code": code, "InformationRequest": None}
-            )
-        except TypeError as e:
-            # Log signature so we can see exact params
-            raise RuntimeError(
-                f"GetDetails signature mismatch for {code}: {e}. "
-                f"Available ops: {list(client.service._operations.keys())}"
-            ) from e
+        detail = client.service.GetDetails(
+            request={"Code": code, "InformationRequest": None}
+        )
+
+        # DEBUG: log all available attributes on the detail object
+        if detail is not None:
+            attrs = [a for a in dir(detail) if not a.startswith('_')]
+            log.info("GetDetails attrs for %s: %s", code, attrs)
+        else:
+            log.warning("GetDetails returned None for %s", code)
+            return
 
         self._upsert_qual(
             code=code,
@@ -217,14 +215,26 @@ class TGAIngestor:
             aqf_level=_v(detail, "AQFLevel") or None,
             status="Current",
         )
-        for cls in _safe_list(detail, "Classifications", "Classification"):
+
+        # Classifications — try multiple possible field names
+        for cls in (_safe_list(detail, "Classifications", "Classification") or
+                    _safe_list(detail, "ClassificationList", "Classification") or []):
             self._upsert_qual_taxonomy(
                 qual_code=code,
                 scheme=_v(cls, "Scheme"),
                 code=_v(cls, "Code") or None,
                 value=_v(cls, "Value"),
             )
-        for u in _safe_list(detail, "CoreUnits", "Unit"):
+
+        # Core units — try multiple possible field names
+        core_units = (
+            _safe_list(detail, "CoreUnits", "Unit") or
+            _safe_list(detail, "CoreUnits", "TrainingComponent") or
+            _safe_list(detail, "Units", "Unit") or
+            []
+        )
+        log.info("Core units for %s: %d", code, len(core_units))
+        for u in core_units:
             uoc_code = _v(u, "Code")
             if not uoc_code:
                 continue
@@ -234,9 +244,18 @@ class TGAIngestor:
                                     uoc_code[:3], is_imported)
             counts["uocs"] += 1
             counts["memberships"] += 1
-        for grp in _safe_list(detail, "ElectiveGroups", "ElectiveGroup"):
+
+        # Elective groups — try multiple possible field names
+        elective_groups = (
+            _safe_list(detail, "ElectiveGroups", "ElectiveGroup") or
+            _safe_list(detail, "ElectiveUnits", "ElectiveGroup") or
+            []
+        )
+        log.info("Elective groups for %s: %d", code, len(elective_groups))
+        for grp in elective_groups:
             grp_name = _v(grp, "GroupName") or None
-            for u in _safe_list(grp, "ElectiveUnits", "Unit"):
+            for u in (_safe_list(grp, "ElectiveUnits", "Unit") or
+                      _safe_list(grp, "Units", "Unit") or []):
                 uoc_code = _v(u, "Code")
                 if not uoc_code:
                     continue
