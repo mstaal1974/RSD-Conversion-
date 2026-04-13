@@ -140,13 +140,6 @@ class TGAIngestor:
             "IncludeSuperseded":       False,
             "TrainingPackageCode":     tp_codes[0] if tp_codes and len(tp_codes) == 1 else None,
         }
-        try:
-            tc_type = client.get_type("ns0:ArrayOfTrainingComponentTypeFilter")
-            filter_obj["TPComponentTypes"] = tc_type(
-                TrainingComponentTypeFilter=["Qualification"]
-            )
-        except Exception:
-            pass
 
         search_result = client.service.Search({
             "Filter":   filter_obj,
