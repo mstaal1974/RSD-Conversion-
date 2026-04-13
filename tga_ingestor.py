@@ -157,7 +157,13 @@ class TGAIngestor:
                 "SearchCode":            True,
                 "SearchTitle":           False,
                 "TrainingComponentTypes": {
-                    "TrainingComponentTypeFilter": "Qualification"
+                    "IncludeQualification":          True,
+                    "IncludeUnit":                   False,
+                    "IncludeSkillSet":               False,
+                    "IncludeTrainingPackage":        False,
+                    "IncludeAccreditedCourse":       False,
+                    "IncludeAccreditedCourseModule": False,
+                    "IncludeUnitContextualisation":  False,
                 },
             }
         )
