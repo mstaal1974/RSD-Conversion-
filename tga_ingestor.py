@@ -31,7 +31,6 @@ from __future__ import annotations
 import os
 import time
 import logging
-from typing import Optional
 from sqlalchemy import text, Engine
 
 log = logging.getLogger(__name__)
@@ -49,7 +48,7 @@ CONF = {
 }
 
 # ---------------------------------------------------------------------------
-# Endpoint registry  (replaces the old single SOAP_WSDL constant)
+# Endpoint registry
 # ---------------------------------------------------------------------------
 _ENDPOINTS = {
     "sandbox": {
@@ -89,7 +88,7 @@ class TGAIngestor:
             raise ValueError(f"TGA_ENV must be 'sandbox' or 'production', got {self.env!r}")
         self._clients: dict[str, object] = {}
 
-    # ── SOAP clients ─────────────────────────────────────────────────────────
+    # ── SOAP clients ──────────────────────────────────────────────────────────
     def _get_client(self, service: str = "training"):
         """Lazy-initialise zeep SOAP client for the requested service."""
         if service not in self._clients:
@@ -107,7 +106,6 @@ class TGAIngestor:
                 raise RuntimeError(f"TGA SOAP connection failed ({service}): {e}") from e
         return self._clients[service]
 
-    # Convenience properties
     @property
     def _training_client(self):
         return self._get_client("training")
@@ -122,11 +120,6 @@ class TGAIngestor:
 
     # ── REST fallback helpers ─────────────────────────────────────────────────
     def _rest_search_qualifications(self, tp_code: str | None = None) -> list[dict]:
-        """
-        Use TGA REST search to get current qualification codes.
-        Fallback when SOAP is unavailable.
-        Returns list of {code, title, tp_code, status}
-        """
         import urllib.request, urllib.parse, json
 
         params = {
@@ -157,7 +150,6 @@ class TGAIngestor:
             return []
 
     def _rest_get_details(self, code: str) -> dict:
-        """Fetch basic details for a qualification or UOC via REST."""
         import urllib.request, json
 
         url = f"https://training.gov.au/api/training/details/{code}"
@@ -170,18 +162,11 @@ class TGAIngestor:
             log.warning("REST details failed for %s: %s", code, e)
             return {}
 
-    # ── Main ingestion entry point ─────────────────────────────────────────────
+    # ── Main ingestion entry point ────────────────────────────────────────────
     def run(self,
             tp_codes: list[str] | None = None,
             use_soap: bool = True,
             progress_callback=None) -> dict:
-        """
-        Full ingestion pipeline.
-        If use_soap=False (or SOAP unavailable), falls back to REST-only mode
-        which gives qual/UOC metadata but not packaging rules.
-
-        Returns dict with counts: quals, uocs, memberships
-        """
         counts = {"quals": 0, "uocs": 0, "memberships": 0}
 
         if use_soap:
@@ -192,32 +177,41 @@ class TGAIngestor:
 
         return self._run_rest(tp_codes, progress_callback, counts)
 
-    # ── SOAP ingestion ─────────────────────────────────────────────────────────
+    # ── SOAP ingestion ────────────────────────────────────────────────────────
     def _run_soap(self, tp_codes, progress_callback, counts) -> dict:
         client = self._training_client
 
         if progress_callback:
             progress_callback(0.05, "Fetching current qualifications from TGA…")
 
-        # TrainingComponentService.Search
+        # Build filter — TPComponentTypes must use the proper zeep type,
+        # NOT a raw Python dict with a list value
+        filter_obj = {
+            "ClassificationFilters":   None,
+            "FieldOfEducationFilters": None,
+            "IncludeSuperseded":       False,
+            "TrainingPackageCode":     tp_codes[0] if tp_codes and len(tp_codes) == 1 else None,
+        }
+        try:
+            tc_type = client.get_type("ns0:ArrayOfTrainingComponentTypeFilter")
+            filter_obj["TPComponentTypes"] = tc_type(
+                TrainingComponentTypeFilter=["Qualification"]
+            )
+        except Exception:
+            pass  # Skip type filter — API returns all types, we filter below
+
         search_result = client.service.Search({
-            "Filter": {
-                "ClassificationFilters": None,
-                "FieldOfEducationFilters": None,
-                "IncludeSuperseded": False,
-                "TPComponentTypes": {
-                    "TrainingComponentTypeFilter": ["Qualification"]
-                },
-                "TrainingPackageCode": tp_codes[0] if tp_codes and len(tp_codes) == 1 else None,
-            },
-            "StartRow":  1,
-            "RowCount":  500,
-            "OrderBy":   "Code",
+            "Filter":   filter_obj,
+            "StartRow": 1,
+            "RowCount": 500,
+            "OrderBy":  "Code",
         })
 
         quals = _safe_list(search_result, "Results", "TrainingComponentSummary")
 
-        # Filter to requested TPs when multiple supplied
+        # Keep only Qualifications and filter to requested TPs
+        quals = [q for q in quals
+                 if _v(q, "TrainingComponentType") in ("Qualification", "")]
         if tp_codes and len(tp_codes) > 1:
             quals = [q for q in quals
                      if any(_v(q, "Code").startswith(tp) for tp in tp_codes)]
@@ -268,6 +262,8 @@ class TGAIngestor:
         # Packaging rules — CoreUnits
         for u in _safe_list(detail, "CoreUnits", "Unit"):
             uoc_code = _v(u, "Code")
+            if not uoc_code:
+                continue
             is_imported = not uoc_code.startswith(code[:3])
             self._upsert_uoc(uoc_code, _v(u, "Title"), uoc_code[:3])
             self._upsert_membership(uoc_code, code, "core", None,
@@ -280,6 +276,8 @@ class TGAIngestor:
             grp_name = _v(grp, "GroupName") or None
             for u in _safe_list(grp, "ElectiveUnits", "Unit"):
                 uoc_code = _v(u, "Code")
+                if not uoc_code:
+                    continue
                 is_imported = not uoc_code.startswith(code[:3])
                 self._upsert_uoc(uoc_code, _v(u, "Title"), uoc_code[:3])
                 self._upsert_membership(uoc_code, code, "elective", grp_name,
@@ -287,7 +285,7 @@ class TGAIngestor:
                 counts["uocs"] += 1
                 counts["memberships"] += 1
 
-    # ── REST ingestion (fallback) ──────────────────────────────────────────────
+    # ── REST ingestion (fallback) ─────────────────────────────────────────────
     def _run_rest(self, tp_codes, progress_callback, counts) -> dict:
         if progress_callback:
             progress_callback(0.05, "Fetching qualifications via REST API…")
@@ -350,7 +348,7 @@ class TGAIngestor:
             counts["uocs"] += 1
             counts["memberships"] += 1
 
-    # ── DB helpers ─────────────────────────────────────────────────────────────
+    # ── DB helpers ────────────────────────────────────────────────────────────
     def _upsert_qual(self, code, title, tp_code, aqf_level=None, status="Current"):
         with self.engine.begin() as conn:
             conn.execute(text("""
@@ -401,11 +399,10 @@ class TGAIngestor:
                    "grp": group, "otp": owner_tp, "imp": is_imported,
                    "rid": self.pipeline_run_id})
 
-    # ── Seed from existing rsd_skill_records ───────────────────────────────────
+    # ── Seed from existing rsd_skill_records ──────────────────────────────────
     def seed_from_rsd_records(self) -> int:
         """
         Bootstrap uoc_registry from the existing rsd_skill_records table.
-        Useful before TGA ingestion runs.
         Returns number of UOCs seeded.
         """
         with self.engine.begin() as conn:
@@ -420,7 +417,6 @@ class TGAIngestor:
             uoc_code  = str(row[0]).strip()
             uoc_title = str(row[1] or "").strip()
             tp_code   = str(row[2] or uoc_code[:3]).strip() or uoc_code[:3]
-
             if not uoc_code:
                 continue
             self._upsert_uoc(uoc_code, uoc_title, tp_code)
@@ -431,7 +427,7 @@ class TGAIngestor:
 
 
 # ---------------------------------------------------------------------------
-# Parsing helpers (shared with core/tga_client.py)
+# Parsing helpers
 # ---------------------------------------------------------------------------
 def _v(obj, key: str, default: str = "") -> str:
     if obj is None:
