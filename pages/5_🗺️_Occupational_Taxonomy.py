@@ -413,7 +413,7 @@ with tab2:
 
     if st.button("▶ Run TGA ingestion"):
         from core.db import start_pipeline_run, finish_pipeline_run
-        from core.tga_ingestor import TGAIngestor
+        from tga_ingestor import TGAIngestor
 
         tp_list = ([t.strip().upper() for t in tp_filter_input.split(",") if t.strip()]
                    if tp_filter_input.strip() else None)
