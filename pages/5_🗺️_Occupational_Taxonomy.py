@@ -504,7 +504,9 @@ with tab2:
             counts = engine_obj.run(uoc_codes=uoc_filter,
                                     run_asc=run_asc_match,
                                     progress_callback=cb2)
-           finish_pipeline_run(engine, rid, "success")
+            finish_pipeline_run(engine, rid, "success",
+                    created=counts.get("links_created", 0),
+                    updated=counts.get("links_updated", 0))
             st.success(f"✅ Created **{counts.get('links_created',0)}** occupation links")
         except Exception as e:
             finish_pipeline_run(engine, rid, "failed", error=str(e))
