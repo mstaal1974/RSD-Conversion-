@@ -411,19 +411,6 @@ class LinkageEngine:
             ).mappings().all()
         return pd.DataFrame([dict(r) for r in rows])
 
-    @staticmethod
-    def tables_exist(engine: Engine) -> bool:
-        """Check whether taxonomy tables have been created."""
-        try:
-            with engine.connect() as conn:
-                row = conn.execute(text("""
-                    SELECT COUNT(*) FROM information_schema.tables
-                    WHERE table_schema = 'public'
-                    AND table_name = 'uoc_occupation_links'
-                """)).fetchone()
-            return bool(row and row[0] > 0)
-        except Exception:
-            return False
 @staticmethod
 def tables_exist(engine: Engine) -> bool:
     """Check whether taxonomy tables have been created."""
