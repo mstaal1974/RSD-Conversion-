@@ -169,14 +169,11 @@ class TGAIngestor:
             progress_callback=None) -> dict:
         counts = {"quals": 0, "uocs": 0, "memberships": 0}
 
-        if use_soap:
-            try:
-                return self._run_soap(tp_codes, progress_callback, counts)
-            except Exception as e:
-                log.warning("SOAP ingestion failed (%s), falling back to REST", e)
+          if use_soap:
+            return self._run_soap(tp_codes, progress_callback, counts)
 
         return self._run_rest(tp_codes, progress_callback, counts)
-
+              
     # ── SOAP ingestion ────────────────────────────────────────────────────────
     def _run_soap(self, tp_codes, progress_callback, counts) -> dict:
         client = self._training_client
