@@ -134,7 +134,16 @@ except ImportError as _e:
     st.error(f"core/linkage_engine.py missing from repo: {_e}")
     st.stop()
 
-_tables_ready = LinkageEngine.tables_exist(engine)
+try:
+    with engine.connect() as _conn:
+        _row = _conn.execute(text("""
+            SELECT COUNT(*) FROM information_schema.tables
+            WHERE table_schema = 'public'
+            AND table_name = 'uoc_occupation_links'
+        """)).fetchone()
+    _tables_ready = bool(_row and _row[0] > 0)
+except Exception:
+    _tables_ready = False
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
