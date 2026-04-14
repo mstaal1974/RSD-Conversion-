@@ -1,13 +1,9 @@
 """
 pages/9_🔗_Role_Skills_Intelligence.py
 
-Five tools for understanding skill connections between occupations:
-
-1. Skill Transferability Map    — occupation network by shared skills
-2. Career Pathway Engine        — closest roles by skill similarity
-3. Skill Gap Analysis           — compare two occupations
-4. Occupation Cluster Map       — skill families across industries
-5. Cross-TP Skill Bridges       — hidden transferability across TPs
+Five tools for understanding skill connections between occupations.
+Similarity is computed from SEMANTIC ANALYSIS of skill statements
+(TF-IDF embeddings + cosine similarity) — not UOC overlap.
 """
 from __future__ import annotations
 import os
@@ -32,14 +28,18 @@ html,body,[class*="css"]{font-family:'IBM Plex Sans',sans-serif}
 .section-hdr{font-family:'IBM Plex Mono',monospace;font-size:0.62rem;letter-spacing:0.15em;
   text-transform:uppercase;color:#4a6fa5;border-bottom:1px solid #1a2a4a;
   padding-bottom:6px;margin:20px 0 12px 0}
-.gap-shared{background:#1b3a1b;border-left:3px solid #4caf50;padding:6px 10px;border-radius:4px;margin-bottom:4px}
-.gap-missing{background:#3a1b1b;border-left:3px solid #f44336;padding:6px 10px;border-radius:4px;margin-bottom:4px}
-.gap-unique{background:#1b2a3a;border-left:3px solid #2196f3;padding:6px 10px;border-radius:4px;margin-bottom:4px}
+.gap-shared{background:#1b3a1b;border-left:3px solid #4caf50;padding:6px 10px;
+  border-radius:4px;margin-bottom:4px;font-size:0.82rem;color:#cfd8dc}
+.gap-missing{background:#3a1b1b;border-left:3px solid #f44336;padding:6px 10px;
+  border-radius:4px;margin-bottom:4px;font-size:0.82rem;color:#cfd8dc}
+.gap-unique{background:#1b2a3a;border-left:3px solid #2196f3;padding:6px 10px;
+  border-radius:4px;margin-bottom:4px;font-size:0.82rem;color:#cfd8dc}
 </style>
 """, unsafe_allow_html=True)
 
 st.title("🔗 Role Skills Intelligence")
-st.caption("Five tools for understanding skill connections and transferability between occupations")
+st.caption("Occupation connections built from **semantic analysis of skill statements** — "
+           "not UOC overlap. Two roles are similar if their skills mean the same thing.")
 
 # ── DB ────────────────────────────────────────────────────────────────────────
 def _secret(k, d=""):
@@ -58,15 +58,14 @@ def get_engine(url):
 
 engine = get_engine(DB_URL)
 
-# ── Load core dataset ─────────────────────────────────────────────────────────
+# ── Load data ─────────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300, show_spinner="Loading occupation-skill data…")
 def load_occ_skills() -> pd.DataFrame:
     with engine.connect() as conn:
         rows = conn.execute(text("""
             SELECT
                 o.anzsco_code, o.anzsco_title, o.anzsco_major_group,
-                o.confidence, o.mapping_source,
-                s.unit_code, s.unit_title, s.tp_code,
+                o.confidence, s.unit_code, s.unit_title, s.tp_code,
                 s.element_title, s.skill_statement
             FROM uoc_occupation_links o
             JOIN rsd_skill_records s ON s.unit_code = o.uoc_code
@@ -83,50 +82,75 @@ if df.empty:
     st.warning("No occupation-skill data found. Run the linkage pipeline first.")
     st.stop()
 
-# Summary
-n_occ   = df["anzsco_code"].nunique()
-n_uocs  = df["unit_code"].nunique()
+n_occ    = df["anzsco_code"].nunique()
+n_uocs   = df["unit_code"].nunique()
 n_skills = len(df)
 
-c1,c2,c3 = st.columns(3)
-for col, val, lbl in [(c1,f"{n_occ:,}","Occupations"),(c2,f"{n_uocs:,}","UOCs"),(c3,f"{n_skills:,}","Skill statements")]:
-    col.markdown(f'<div class="intel-card"><div class="intel-val">{val}</div>'
-                 f'<div class="intel-lbl">{lbl}</div></div>', unsafe_allow_html=True)
+c1, c2, c3 = st.columns(3)
+for col, val, lbl in [
+    (c1, f"{n_occ:,}", "Occupations"),
+    (c2, f"{n_uocs:,}", "UOCs"),
+    (c3, f"{n_skills:,}", "Skill statements"),
+]:
+    col.markdown(
+        f'<div class="intel-card"><div class="intel-val">{val}</div>'
+        f'<div class="intel-lbl">{lbl}</div></div>',
+        unsafe_allow_html=True,
+    )
 
-# ── Precompute occupation-UOC matrix ─────────────────────────────────────────
-@st.cache_data(ttl=300, show_spinner="Computing skill matrices…")
-def compute_matrices(df_hash: int):
-    # Occupation × UOC presence matrix
-    occ_uoc = df.groupby(["anzsco_code","unit_code"]).size().unstack(fill_value=0)
-    occ_uoc_bin = (occ_uoc > 0).astype(int)
+# ── Core semantic computation ─────────────────────────────────────────────────
+@st.cache_data(ttl=600, show_spinner="Computing semantic skill embeddings…")
+def compute_semantic_similarity():
+    """
+    For each occupation, concatenate all skill statements into one document.
+    Embed with TF-IDF, then compute cosine similarity between occupation documents.
+    Returns: occ_vectors (DataFrame), sim_matrix (ndarray), occ_meta (DataFrame)
+    """
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.metrics.pairwise import cosine_similarity
+    from sklearn.preprocessing import normalize
 
-    # Occupation metadata
+    # Build one document per occupation = all skill statements concatenated
+    occ_docs = (
+        df.groupby("anzsco_code")["skill_statement"]
+        .apply(lambda stmts: " ".join(stmts))
+        .reset_index()
+    )
+    occ_docs.columns = ["anzsco_code", "document"]
+
     occ_meta = (
         df.groupby("anzsco_code")
         .agg(
-            title=("anzsco_title","first"),
-            major=("anzsco_major_group","first"),
-            uoc_count=("unit_code","nunique"),
-            skill_count=("skill_statement","count"),
-            tp_count=("tp_code","nunique"),
+            title=("anzsco_title", "first"),
+            major=("anzsco_major_group", "first"),
+            uoc_count=("unit_code", "nunique"),
+            skill_count=("skill_statement", "count"),
+            tp_count=("tp_code", "nunique"),
         )
         .reset_index()
     )
+    occ_meta = occ_meta.merge(occ_docs, on="anzsco_code")
 
-    # Jaccard similarity between occupations
-    mat = occ_uoc_bin.values.astype(float)
-    intersection = mat @ mat.T
-    row_sums = mat.sum(axis=1)
-    union = row_sums[:, None] + row_sums[None, :] - intersection
-    union = np.where(union == 0, 1, union)
-    jaccard = intersection / union
-    np.fill_diagonal(jaccard, 0)
+    # TF-IDF embedding
+    vec = TfidfVectorizer(
+        ngram_range=(1, 2),
+        stop_words="english",
+        max_features=15000,
+        min_df=1,
+        sublinear_tf=True,
+    )
+    tfidf = vec.fit_transform(occ_meta["document"])
+    tfidf_norm = normalize(tfidf)
 
-    return occ_uoc_bin, occ_meta, jaccard
+    # Cosine similarity matrix
+    sim_matrix = cosine_similarity(tfidf_norm)
+    np.fill_diagonal(sim_matrix, 0)
 
-occ_uoc_bin, occ_meta, jaccard = compute_matrices(len(df))
-occ_list = occ_meta["anzsco_code"].tolist()
-occ_label = {r["anzsco_code"]: f"{r['title']}" for _, r in occ_meta.iterrows()}
+    return occ_meta, sim_matrix, tfidf_norm, vec
+
+occ_meta, sim_matrix, tfidf_norm, tfidf_vec = compute_semantic_similarity()
+occ_codes = occ_meta["anzsco_code"].tolist()
+occ_label = {r["anzsco_code"]: r["title"] for _, r in occ_meta.iterrows()}
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
 tabs = st.tabs([
@@ -138,278 +162,270 @@ tabs = st.tabs([
 ])
 
 # ─────────────────────────────────────────────────────────────────────────────
-# TAB 1 — SKILL TRANSFERABILITY MAP
+# TAB 1 — TRANSFERABILITY MAP
 # ─────────────────────────────────────────────────────────────────────────────
 with tabs[0]:
     st.markdown('<div class="section-hdr">Skill Transferability Map</div>',
                 unsafe_allow_html=True)
-    st.caption("Occupations linked by shared skills. Thicker edges = more shared UOCs. "
-               "Larger nodes = more skills. Clusters = skill families.")
+    st.caption("Occupations linked by **semantic skill similarity**. "
+               "Edges connect roles whose skill statements mean similar things.")
 
     col_s1, col_s2, col_s3 = st.columns(3)
     with col_s1:
-        min_sim = st.slider("Min similarity threshold", 0.05, 0.8, 0.15, 0.05,
+        min_sim = st.slider("Min semantic similarity", 0.05, 0.9, 0.25, 0.05,
                             key="map_sim")
     with col_s2:
-        major_filter = st.selectbox("Filter major group",
+        major_filter = st.selectbox(
+            "Filter major group",
             ["All"] + sorted(df["anzsco_major_group"].dropna().unique()),
-            key="map_major")
+            key="map_major",
+        )
     with col_s3:
-        max_nodes = st.slider("Max occupations", 20, min(200, n_occ), 60, 10,
+        max_nodes = st.slider("Max occupations", 20, min(200, n_occ), 80, 10,
                               key="map_nodes")
 
-    # Filter
+    # Filter occupations
     if major_filter != "All":
-        filtered_codes = occ_meta[occ_meta["major"] == major_filter]["anzsco_code"].tolist()
+        sub_meta = occ_meta[occ_meta["major"] == major_filter].head(max_nodes)
     else:
-        # Take top N by skill count
-        filtered_codes = occ_meta.nlargest(max_nodes, "skill_count")["anzsco_code"].tolist()
+        sub_meta = occ_meta.nlargest(max_nodes, "skill_count")
 
-    filtered_codes = filtered_codes[:max_nodes]
-    idx_map = {c: i for i, c in enumerate(filtered_codes)
-               if c in occ_uoc_bin.index}
-    valid_codes = list(idx_map.keys())
+    sub_idx   = [occ_codes.index(c) for c in sub_meta["anzsco_code"] if c in occ_codes]
+    sub_codes = [occ_codes[i] for i in sub_idx]
+    sub_sim   = sim_matrix[np.ix_(sub_idx, sub_idx)]
 
-    if len(valid_codes) < 2:
-        st.warning("Not enough occupations for selected filters.")
+    if len(sub_codes) < 2:
+        st.warning("Not enough occupations. Try changing filters.")
     else:
-        sub_idx = [occ_uoc_bin.index.get_loc(c) for c in valid_codes]
-        sub_jac = jaccard[np.ix_(sub_idx, sub_idx)]
-
-        # Network layout
         import networkx as nx
         G = nx.Graph()
-        for c in valid_codes:
-            m = occ_meta[occ_meta["anzsco_code"] == c].iloc[0]
+        for c in sub_codes:
+            m = sub_meta[sub_meta["anzsco_code"] == c].iloc[0]
             G.add_node(c, title=occ_label.get(c, c),
                        size=float(m["skill_count"]),
-                       major=m["major"])
+                       major=str(m["major"]))
 
-        for i, ci in enumerate(valid_codes):
-            for j, cj in enumerate(valid_codes):
-                if i < j and sub_jac[i, j] >= min_sim:
-                    G.add_edge(ci, cj, weight=float(sub_jac[i, j]))
+        for i, ci in enumerate(sub_codes):
+            for j, cj in enumerate(sub_codes):
+                if i < j and sub_sim[i, j] >= min_sim:
+                    G.add_edge(ci, cj, weight=float(sub_sim[i, j]))
 
-        pos = nx.spring_layout(G, k=2/np.sqrt(max(len(valid_codes),1)),
-                               seed=42, iterations=50)
+        pos = nx.spring_layout(G, k=2.5/np.sqrt(max(len(sub_codes), 1)),
+                               seed=42, iterations=80,
+                               weight="weight")
 
-        # Build traces
         major_colors = {
-            "Managers": "#ef9f27",
-            "Professionals": "#7eb8f7",
-            "Technicians and Trades Workers": "#a5d6a7",
-            "Community and Personal Service Workers": "#ce93d8",
-            "Clerical and Administrative Workers": "#80deea",
-            "Sales Workers": "#f48fb1",
-            "Machinery Operators and Drivers": "#ffcc80",
-            "Labourers": "#bcaaa4",
+            "Managers":                              "#ef9f27",
+            "Professionals":                         "#7eb8f7",
+            "Technicians and Trades Workers":        "#a5d6a7",
+            "Community and Personal Service Workers":"#ce93d8",
+            "Clerical and Administrative Workers":   "#80deea",
+            "Sales Workers":                         "#f48fb1",
+            "Machinery Operators and Drivers":       "#ffcc80",
+            "Labourers":                             "#bcaaa4",
         }
 
         fig_net = go.Figure()
 
         # Edges
         for u, v, d in G.edges(data=True):
-            x0, y0 = pos[u]; x1, y1 = pos[v]
+            x0, y0 = pos[u]
+            x1, y1 = pos[v]
             w = d["weight"]
             fig_net.add_trace(go.Scatter(
-                x=[x0,x1,None], y=[y0,y1,None],
+                x=[x0, x1, None], y=[y0, y1, None],
                 mode="lines",
-                line=dict(width=w*8, color=f"rgba(126,184,247,{min(w*2,0.6)})"),
+                line=dict(width=max(0.5, w * 6),
+                          color=f"rgba(126,184,247,{min(w * 1.5, 0.55):.2f})"),
                 hoverinfo="none", showlegend=False,
             ))
 
-        # Nodes per major group
+        # Nodes by major group
         for major, color in major_colors.items():
-            nodes = [c for c in valid_codes
+            nodes = [c for c in sub_codes
                      if G.nodes[c].get("major") == major and c in pos]
-            if not nodes: continue
-            m_data = occ_meta[occ_meta["anzsco_code"].isin(nodes)]
+            if not nodes:
+                continue
+            node_meta = sub_meta[sub_meta["anzsco_code"].isin(nodes)]
+            sizes = []
+            hover = []
+            for c in nodes:
+                m = node_meta[node_meta["anzsco_code"] == c]
+                sc = int(m["skill_count"].values[0]) if len(m) else 10
+                sizes.append(min(6 + sc / 6, 35))
+                hover.append(
+                    f"<b>{occ_label.get(c, c)}</b><br>"
+                    f"ANZSCO: {c}<br>"
+                    f"Skills: {sc}<br>"
+                    f"Connections: {G.degree(c)}"
+                )
             fig_net.add_trace(go.Scatter(
                 x=[pos[c][0] for c in nodes],
                 y=[pos[c][1] for c in nodes],
                 mode="markers+text",
                 name=major,
-                marker=dict(
-                    size=[min(5 + m_data[m_data["anzsco_code"]==c]["skill_count"].values[0]/8, 30)
-                          for c in nodes],
-                    color=color, opacity=0.85,
-                    line=dict(width=1, color="#0a1628"),
-                ),
-                text=[occ_label.get(c,c)[:20] for c in nodes],
+                marker=dict(size=sizes, color=color, opacity=0.85,
+                            line=dict(width=0.8, color="#0a1628")),
+                text=[occ_label.get(c, c)[:22] for c in nodes],
                 textposition="top center",
                 textfont=dict(size=8, color="#cfd8dc"),
-                hovertext=[
-                    f"<b>{occ_label.get(c,c)}</b><br>"
-                    f"ANZSCO: {c}<br>"
-                    f"Skills: {m_data[m_data['anzsco_code']==c]['skill_count'].values[0]}<br>"
-                    f"UOCs: {m_data[m_data['anzsco_code']==c]['uoc_count'].values[0]}"
-                    for c in nodes
-                ],
-                hoverinfo="text",
+                hovertext=hover, hoverinfo="text",
             ))
 
         fig_net.update_layout(
-            height=600, showlegend=True,
+            height=620, showlegend=True,
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="#080e1a",
             font_color="#7eb8f7",
-            legend=dict(x=1.01, y=1, bgcolor="rgba(10,22,40,0.8)",
+            legend=dict(x=1.01, y=1, bgcolor="rgba(10,22,40,0.85)",
                         bordercolor="#1a2a4a", font_size=10),
             xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
             yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-            margin=dict(l=20,r=200,t=40,b=20),
-            title=f"Skill Transferability Network — {len(valid_codes)} occupations, "
-                  f"{G.number_of_edges()} connections",
+            margin=dict(l=20, r=220, t=50, b=20),
+            title=f"Semantic Skill Network — {len(sub_codes)} occupations, "
+                  f"{G.number_of_edges()} connections (sim ≥ {min_sim})",
         )
         st.plotly_chart(fig_net, use_container_width=True)
 
-        # Top transferable pairs
-        st.markdown('<div class="section-hdr">Most transferable occupation pairs</div>',
+        # Top pairs
+        st.markdown('<div class="section-hdr">Most semantically similar pairs</div>',
                     unsafe_allow_html=True)
         pairs = []
-        for i, ci in enumerate(valid_codes):
-            for j, cj in enumerate(valid_codes):
-                if i < j and sub_jac[i,j] > 0:
-                    shared = int((occ_uoc_bin.loc[ci] & occ_uoc_bin.loc[cj]).sum())
+        for i, ci in enumerate(sub_codes):
+            for j, cj in enumerate(sub_codes):
+                if i < j and sub_sim[i, j] >= min_sim:
                     pairs.append({
                         "Occupation A": occ_label.get(ci, ci),
                         "Occupation B": occ_label.get(cj, cj),
-                        "Shared UOCs": shared,
-                        "Similarity": round(float(sub_jac[i,j]), 3),
+                        "Semantic similarity": round(float(sub_sim[i, j]), 3),
                     })
         if pairs:
-            pairs_df = pd.DataFrame(pairs).sort_values("Similarity", ascending=False).head(20)
+            pairs_df = pd.DataFrame(pairs).sort_values(
+                "Semantic similarity", ascending=False).head(20)
             st.dataframe(pairs_df, use_container_width=True, hide_index=True,
                 column_config={
-                    "Similarity": st.column_config.ProgressColumn(
+                    "Semantic similarity": st.column_config.ProgressColumn(
                         min_value=0, max_value=1, format="%.3f"),
                 })
 
 # ─────────────────────────────────────────────────────────────────────────────
-# TAB 2 — CAREER PATHWAY ENGINE
+# TAB 2 — CAREER PATHWAYS
 # ─────────────────────────────────────────────────────────────────────────────
 with tabs[1]:
     st.markdown('<div class="section-hdr">Career Pathway Engine</div>',
                 unsafe_allow_html=True)
-    st.caption("Starting from any occupation, find the closest roles by skill overlap. "
-               "Shows % of skills already held and what's needed to transition.")
+    st.caption("Find the closest roles to any occupation based on **what skills mean**, "
+               "not just which units appear.")
 
     sel_occ = st.selectbox(
         "Starting occupation",
-        options=occ_list,
-        format_func=lambda c: f"{occ_label.get(c,c)} ({c})",
+        options=occ_codes,
+        format_func=lambda c: f"{occ_label.get(c, c)} ({c})",
         key="path_occ",
     )
+    top_n = st.slider("Top N pathways", 5, 30, 12, key="path_n")
 
-    top_n_paths = st.slider("Show top N pathways", 5, 30, 10, key="path_n")
+    if sel_occ in occ_codes:
+        idx     = occ_codes.index(sel_occ)
+        sims    = sim_matrix[idx]
+        top_idx = np.argsort(sims)[::-1][:top_n]
 
-    if sel_occ in occ_uoc_bin.index:
-        occ_idx = list(occ_uoc_bin.index).index(sel_occ)
-        sims    = jaccard[occ_idx]
-        top_idx = np.argsort(sims)[::-1][:top_n_paths+1]
-        top_idx = [i for i in top_idx if i != occ_idx][:top_n_paths]
+        src_skills = df[df["anzsco_code"] == sel_occ]["skill_statement"].tolist()
+        src_uocs   = set(df[df["anzsco_code"] == sel_occ]["unit_code"])
 
-        src_uocs  = set(occ_uoc_bin.columns[occ_uoc_bin.loc[sel_occ] > 0])
-        src_skills = df[df["anzsco_code"] == sel_occ]["skill_statement"].nunique()
-
-        st.markdown(f"**{occ_label.get(sel_occ, sel_occ)}** — "
-                    f"{src_skills} skills · {len(src_uocs)} UOCs")
+        st.markdown(
+            f"**{occ_label.get(sel_occ, sel_occ)}** — "
+            f"{len(src_skills)} skills · {len(src_uocs)} UOCs"
+        )
         st.divider()
 
-        pathway_data = []
-        for idx in top_idx:
-            tgt_code = occ_uoc_bin.index[idx]
-            tgt_uocs = set(occ_uoc_bin.columns[occ_uoc_bin.loc[tgt_code] > 0])
-            shared   = src_uocs & tgt_uocs
-            missing  = tgt_uocs - src_uocs
-            extra    = src_uocs - tgt_uocs
-            tgt_meta = occ_meta[occ_meta["anzsco_code"] == tgt_code].iloc[0]
-            transferability = len(shared) / max(len(tgt_uocs), 1) * 100
-
-            pathway_data.append({
-                "code":            tgt_code,
-                "title":           occ_label.get(tgt_code, tgt_code),
-                "major":           tgt_meta["major"],
-                "similarity":      round(float(sims[idx]), 3),
-                "transferability": round(transferability, 1),
-                "shared_uocs":     len(shared),
-                "missing_uocs":    len(missing),
-                "shared_list":     sorted(shared),
-                "missing_list":    sorted(missing),
+        pathway_rows = []
+        for i in top_idx:
+            tgt_code   = occ_codes[i]
+            sim        = float(sims[i])
+            tgt_skills = df[df["anzsco_code"] == tgt_code]["skill_statement"].tolist()
+            tgt_uocs   = set(df[df["anzsco_code"] == tgt_code]["unit_code"])
+            shared_uocs  = src_uocs & tgt_uocs
+            missing_uocs = tgt_uocs - src_uocs
+            m = occ_meta[occ_meta["anzsco_code"] == tgt_code].iloc[0]
+            pathway_rows.append({
+                "code":          tgt_code,
+                "title":         occ_label.get(tgt_code, tgt_code),
+                "major":         m["major"],
+                "semantic_sim":  round(sim, 3),
+                "shared_uocs":   len(shared_uocs),
+                "missing_uocs":  len(missing_uocs),
+                "missing_list":  sorted(missing_uocs),
+                "tgt_skill_count": len(tgt_skills),
             })
 
-        for p in pathway_data:
-            pct   = p["transferability"]
-            color = "#1b5e20" if pct >= 70 else "#0d47a1" if pct >= 40 else "#bf360c"
-            with st.expander(
-                f"**{p['title']}** — {pct:.0f}% transferable · "
-                f"{p['shared_uocs']} shared UOCs · {p['missing_uocs']} to gain",
-                expanded=False
-            ):
-                pa, pb = st.columns(2)
-                with pa:
-                    st.markdown(
-                        f'<div style="background:#0a1628;border-radius:6px;padding:10px">'
-                        f'<div style="font-size:0.7rem;color:#4a6fa5;margin-bottom:4px">'
-                        f'TRANSFERABILITY</div>'
-                        f'<div style="background:#1a2a4a;border-radius:3px;height:12px">'
-                        f'<div style="width:{pct:.0f}%;background:{color};height:12px;'
-                        f'border-radius:3px"></div></div>'
-                        f'<div style="font-family:monospace;color:{color};margin-top:4px">'
-                        f'{pct:.1f}% of skills already held</div></div>',
-                        unsafe_allow_html=True
-                    )
-                with pb:
-                    st.metric("Shared UOCs", p["shared_uocs"])
-
-                if p["missing_list"]:
-                    st.markdown("**UOCs needed to transition:**")
-                    missing_df = df[df["unit_code"].isin(p["missing_list"])][
-                        ["unit_code","unit_title","tp_code"]
-                    ].drop_duplicates("unit_code")
-                    st.dataframe(missing_df, use_container_width=True,
-                                 hide_index=True)
-
-        # Summary chart
-        path_df = pd.DataFrame([{
-            "Occupation": p["title"][:30],
-            "Transferability %": p["transferability"],
-            "Shared UOCs": p["shared_uocs"],
-            "Missing UOCs": p["missing_uocs"],
-        } for p in pathway_data])
-
+        # Bar chart
+        path_df = pd.DataFrame(pathway_rows)
         fig_path = px.bar(
-            path_df, x="Transferability %", y="Occupation",
-            orientation="h", color="Transferability %",
-            color_continuous_scale=["#bf360c","#0d47a1","#1b5e20"],
-            range_color=[0,100],
-            title=f"Career pathways from {occ_label.get(sel_occ,sel_occ)[:40]}",
-            height=max(300, len(pathway_data)*35),
+            path_df, x="semantic_sim", y="title",
+            orientation="h",
+            color="semantic_sim",
+            color_continuous_scale=["#0d47a1", "#1b5e20"],
+            range_color=[0, 1],
+            title=f"Semantic career pathways from "
+                  f"{occ_label.get(sel_occ, sel_occ)[:40]}",
+            height=max(300, len(pathway_rows) * 35),
+            labels={"semantic_sim": "Semantic similarity", "title": ""},
         )
-        fig_path.update_layout(paper_bgcolor="rgba(0,0,0,0)",
-                               plot_bgcolor="#080e1a",
-                               font_color="#7eb8f7", showlegend=False)
+        fig_path.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="#080e1a",
+            font_color="#7eb8f7", showlegend=False,
+        )
         st.plotly_chart(fig_path, use_container_width=True)
+
+        # Detail expanders
+        for p in pathway_rows:
+            sim_pct = p["semantic_sim"] * 100
+            color = ("#1b5e20" if sim_pct >= 60 else
+                     "#0d47a1" if sim_pct >= 35 else "#bf360c")
+            with st.expander(
+                f"**{p['title']}** — {sim_pct:.0f}% semantic match · "
+                f"{p['shared_uocs']} shared UOCs · {p['missing_uocs']} new UOCs",
+                expanded=False,
+            ):
+                st.markdown(
+                    f'<div style="background:#0a1628;border-radius:6px;padding:10px">'
+                    f'<div style="background:#1a2a4a;border-radius:3px;height:10px">'
+                    f'<div style="width:{sim_pct:.0f}%;background:{color};'
+                    f'height:10px;border-radius:3px"></div></div>'
+                    f'<div style="font-family:monospace;color:{color};margin-top:6px">'
+                    f'Semantic similarity: {p["semantic_sim"]:.3f}</div></div>',
+                    unsafe_allow_html=True,
+                )
+                if p["missing_list"]:
+                    st.markdown("**New UOCs to gain:**")
+                    missing_df = df[df["unit_code"].isin(p["missing_list"])][
+                        ["unit_code", "unit_title", "tp_code"]
+                    ].drop_duplicates("unit_code")
+                    st.dataframe(missing_df, use_container_width=True, hide_index=True)
 
         # Export
         export_rows = []
-        for p in pathway_data:
+        for p in pathway_rows:
             for uoc in p["missing_list"]:
-                u = df[df["unit_code"] == uoc][["unit_code","unit_title","tp_code"]].drop_duplicates()
+                u = df[df["unit_code"] == uoc][
+                    ["unit_code", "unit_title", "tp_code"]
+                ].drop_duplicates()
                 if not u.empty:
                     export_rows.append({
-                        "From Occupation": occ_label.get(sel_occ, sel_occ),
-                        "To Occupation": p["title"],
-                        "Transferability %": p["transferability"],
-                        "Gap UOC Code": uoc,
-                        "Gap UOC Title": u.iloc[0]["unit_title"],
-                        "Training Package": u.iloc[0]["tp_code"],
+                        "From Occupation":    occ_label.get(sel_occ, sel_occ),
+                        "To Occupation":      p["title"],
+                        "Semantic Similarity": p["semantic_sim"],
+                        "Gap UOC":            uoc,
+                        "Unit Title":         u.iloc[0]["unit_title"],
+                        "TP":                 u.iloc[0]["tp_code"],
                     })
         if export_rows:
             st.download_button(
-                "⬇ Export pathway gap analysis CSV",
+                "⬇ Export pathway gaps CSV",
                 pd.DataFrame(export_rows).to_csv(index=False).encode(),
-                f"pathway_gaps_{sel_occ}.csv", "text/csv",
+                f"pathway_{sel_occ}.csv", "text/csv",
             )
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -418,274 +434,297 @@ with tabs[1]:
 with tabs[2]:
     st.markdown('<div class="section-hdr">Skill Gap Analysis</div>',
                 unsafe_allow_html=True)
-    st.caption("Compare two occupations — shared skills, unique skills, and the gap to bridge.")
+    st.caption("Compare two occupations — semantic similarity, shared UOCs, "
+               "and the skill statements that exist in one but not the other.")
 
     g1, g2 = st.columns(2)
     with g1:
-        occ_a = st.selectbox("Occupation A (current role)",
-            options=occ_list,
+        occ_a = st.selectbox("Occupation A (current)",
+            options=occ_codes,
             format_func=lambda c: f"{occ_label.get(c,c)} ({c})",
             key="gap_a")
     with g2:
-        occ_b = st.selectbox("Occupation B (target role)",
-            options=occ_list,
+        occ_b = st.selectbox("Occupation B (target)",
+            options=occ_codes,
             format_func=lambda c: f"{occ_label.get(c,c)} ({c})",
-            index=min(1, len(occ_list)-1),
+            index=min(1, len(occ_codes)-1),
             key="gap_b")
 
     if occ_a == occ_b:
-        st.info("Select two different occupations to compare.")
-    elif occ_a in occ_uoc_bin.index and occ_b in occ_uoc_bin.index:
-        uocs_a = set(occ_uoc_bin.columns[occ_uoc_bin.loc[occ_a] > 0])
-        uocs_b = set(occ_uoc_bin.columns[occ_uoc_bin.loc[occ_b] > 0])
+        st.info("Select two different occupations.")
+    else:
+        ai = occ_codes.index(occ_a)
+        bi = occ_codes.index(occ_b)
+        sem_sim = float(sim_matrix[ai, bi])
+
+        uocs_a = set(df[df["anzsco_code"] == occ_a]["unit_code"])
+        uocs_b = set(df[df["anzsco_code"] == occ_b]["unit_code"])
         shared  = uocs_a & uocs_b
         only_a  = uocs_a - uocs_b
         only_b  = uocs_b - uocs_a
 
-        transferability = len(shared) / max(len(uocs_b), 1) * 100
-        ai = list(occ_uoc_bin.index).index(occ_a)
-        bi = list(occ_uoc_bin.index).index(occ_b)
-        sim = float(jaccard[ai, bi])
+        skills_a = df[df["anzsco_code"] == occ_a]["skill_statement"].tolist()
+        skills_b = df[df["anzsco_code"] == occ_b]["skill_statement"].tolist()
 
-        # Header metrics
-        m1,m2,m3,m4 = st.columns(4)
-        m1.metric("Shared UOCs", len(shared))
-        m2.metric(f"Only in {occ_a[:6]}…", len(only_a))
-        m3.metric(f"Gap to {occ_b[:6]}…", len(only_b))
-        m4.metric("Transferability", f"{transferability:.0f}%")
+        # Metrics
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Semantic similarity", f"{sem_sim:.3f}")
+        m2.metric("Shared UOCs", len(shared))
+        m3.metric("Skills in A", len(skills_a))
+        m4.metric("Skills in B", len(skills_b))
 
-        # Venn-style bar
-        total = len(uocs_a | uocs_b)
+        # Similarity bar
+        color = ("#1b5e20" if sem_sim >= 0.6 else
+                 "#0d47a1" if sem_sim >= 0.3 else "#bf360c")
         st.markdown(
-            f'<div style="background:#1a2a4a;border-radius:6px;height:20px;'
-            f'display:flex;margin-bottom:16px">'
-            f'<div style="width:{len(only_a)/max(total,1)*100:.0f}%;background:#ef9f27;'
-            f'border-radius:6px 0 0 6px;height:20px" title="Only in A"></div>'
-            f'<div style="width:{len(shared)/max(total,1)*100:.0f}%;background:#4caf50;'
-            f'height:20px" title="Shared"></div>'
-            f'<div style="width:{len(only_b)/max(total,1)*100:.0f}%;background:#7eb8f7;'
-            f'border-radius:0 6px 6px 0;height:20px" title="Only in B"></div>'
-            f'</div>'
-            f'<div style="display:flex;gap:16px;font-size:0.72rem;color:#7eb8f7;margin-bottom:16px">'
-            f'<span>🟠 Only in A: {len(only_a)}</span>'
-            f'<span>🟢 Shared: {len(shared)}</span>'
-            f'<span>🔵 Gap (only in B): {len(only_b)}</span>'
+            f'<div style="background:#1a2a4a;border-radius:6px;height:16px;margin-bottom:16px">'
+            f'<div style="width:{sem_sim*100:.0f}%;background:{color};'
+            f'height:16px;border-radius:6px"></div></div>'
+            f'<div style="font-size:0.75rem;color:{color};margin-bottom:16px">'
+            f'Semantic similarity: {sem_sim:.3f} — '
+            f'{"High transferability" if sem_sim>=0.6 else "Moderate" if sem_sim>=0.3 else "Low transferability"}'
             f'</div>',
-            unsafe_allow_html=True
+            unsafe_allow_html=True,
         )
 
+        # Skill statement semantic matching
+        from sklearn.metrics.pairwise import cosine_similarity as cs_fn
+
+        if skills_a and skills_b:
+            from sklearn.feature_extraction.text import TfidfVectorizer
+            all_stmts = skills_a + skills_b
+            v = TfidfVectorizer(ngram_range=(1,2), stop_words="english",
+                                max_features=5000)
+            tm = v.fit_transform(all_stmts)
+            sim_ab = cs_fn(tm[:len(skills_a)], tm[len(skills_a):])
+
+            # Find best semantic matches
+            st.markdown('<div class="section-hdr">Closest skill statement pairs</div>',
+                        unsafe_allow_html=True)
+            matches = []
+            for i in range(min(len(skills_a), 50)):
+                best_j = int(np.argmax(sim_ab[i]))
+                best_s = float(sim_ab[i, best_j])
+                if best_s >= 0.3:
+                    matches.append({
+                        "Skill A": skills_a[i][:120],
+                        "Skill B": skills_b[best_j][:120],
+                        "Similarity": round(best_s, 3),
+                    })
+            if matches:
+                match_df = pd.DataFrame(matches).sort_values(
+                    "Similarity", ascending=False).drop_duplicates("Skill A").head(15)
+                st.dataframe(match_df, use_container_width=True, hide_index=True,
+                    column_config={
+                        "Similarity": st.column_config.ProgressColumn(
+                            min_value=0, max_value=1, format="%.3f"),
+                        "Skill A": st.column_config.TextColumn(width="large"),
+                        "Skill B": st.column_config.TextColumn(width="large"),
+                    })
+
+        # UOC gap columns
+        st.markdown('<div class="section-hdr">UOC breakdown</div>',
+                    unsafe_allow_html=True)
         col3a, col3b, col3c = st.columns(3)
 
-        def show_uoc_list(col, uoc_set, label, css_class):
+        def show_uoc_col(col, uoc_set, label, css):
             with col:
                 st.markdown(f"**{label}** ({len(uoc_set)})")
-                uoc_df = df[df["unit_code"].isin(uoc_set)][
+                sub = df[df["unit_code"].isin(uoc_set)][
                     ["unit_code","unit_title","tp_code"]
-                ].drop_duplicates("unit_code").head(20)
-                for _, row in uoc_df.iterrows():
+                ].drop_duplicates("unit_code").head(15)
+                for _, row in sub.iterrows():
                     st.markdown(
-                        f'<div class="{css_class}" style="font-size:0.78rem;margin-bottom:3px">'
-                        f'<code style="color:#7eb8f7">{row["unit_code"]}</code> '
-                        f'{row["unit_title"][:50]}</div>',
-                        unsafe_allow_html=True
+                        f'<div class="{css}">'
+                        f'<code style="color:#7eb8f7;font-size:0.72rem">'
+                        f'{row["unit_code"]}</code> {row["unit_title"][:45]}'
+                        f'</div>',
+                        unsafe_allow_html=True,
                     )
-                if len(uoc_set) > 20:
-                    st.caption(f"… and {len(uoc_set)-20} more")
 
-        show_uoc_list(col3a, only_a,
-                      f"Only in {occ_label.get(occ_a,occ_a)[:25]}", "gap-unique")
-        show_uoc_list(col3b, shared, "Shared by both", "gap-shared")
-        show_uoc_list(col3c, only_b,
-                      f"Gap — needed for {occ_label.get(occ_b,occ_b)[:20]}", "gap-missing")
+        show_uoc_col(col3a, only_a,
+                     f"Only in {occ_label.get(occ_a,'A')[:20]}", "gap-unique")
+        show_uoc_col(col3b, shared, "Shared", "gap-shared")
+        show_uoc_col(col3c, only_b,
+                     f"Gap — {occ_label.get(occ_b,'B')[:20]}", "gap-missing")
 
-        # Skill statement comparison
-        st.divider()
-        st.markdown("**Skill statement comparison**")
-        skills_a = set(df[df["anzsco_code"] == occ_a]["skill_statement"].tolist())
-        skills_b = set(df[df["anzsco_code"] == occ_b]["skill_statement"].tolist())
-
-        from sklearn.feature_extraction.text import TfidfVectorizer
-        from sklearn.metrics.pairwise import cosine_similarity as cs
-
-        all_skills = list(skills_a | skills_b)
-        if len(all_skills) > 1:
-            vec = TfidfVectorizer(ngram_range=(1,2), stop_words="english",
-                                  max_features=3000)
-            tfidf = vec.fit_transform(all_skills)
-            sim_mat = cs(tfidf[:len(skills_a)], tfidf[len(skills_a):])
-            avg_semantic_sim = float(sim_mat.mean())
-            st.metric("Semantic skill similarity", f"{avg_semantic_sim:.3f}",
-                     help="Average cosine similarity between skill statements")
-
-        # Export gap analysis
-        gap_export = []
+        # Export
+        gap_rows = []
         for uoc in only_b:
-            u = df[df["unit_code"] == uoc][["unit_code","unit_title","tp_code"]].drop_duplicates()
-            if not u.empty:
-                stmts = df[(df["unit_code"] == uoc) & (df["anzsco_code"] == occ_b)]["skill_statement"].tolist()
-                for stmt in stmts[:3]:
-                    gap_export.append({
-                        "From": occ_label.get(occ_a, occ_a),
-                        "To": occ_label.get(occ_b, occ_b),
-                        "Gap UOC": uoc,
-                        "Unit Title": u.iloc[0]["unit_title"],
-                        "TP": u.iloc[0]["tp_code"],
-                        "Skill needed": stmt,
-                    })
-        if gap_export:
+            u = df[df["unit_code"] == uoc][
+                ["unit_code","unit_title","tp_code"]].drop_duplicates()
+            stmts = df[(df["unit_code"]==uoc) &
+                       (df["anzsco_code"]==occ_b)]["skill_statement"].tolist()
+            for stmt in stmts[:3]:
+                gap_rows.append({
+                    "From": occ_label.get(occ_a, occ_a),
+                    "To": occ_label.get(occ_b, occ_b),
+                    "Semantic similarity": round(sem_sim, 3),
+                    "Gap UOC": uoc,
+                    "Unit Title": u.iloc[0]["unit_title"] if len(u) else "",
+                    "TP": u.iloc[0]["tp_code"] if len(u) else "",
+                    "Skill needed": stmt,
+                })
+        if gap_rows:
             st.download_button(
                 "⬇ Export skill gap CSV",
-                pd.DataFrame(gap_export).to_csv(index=False).encode(),
-                f"skill_gap_{occ_a}_to_{occ_b}.csv", "text/csv",
+                pd.DataFrame(gap_rows).to_csv(index=False).encode(),
+                f"gap_{occ_a}_{occ_b}.csv", "text/csv",
             )
 
 # ─────────────────────────────────────────────────────────────────────────────
-# TAB 4 — OCCUPATION CLUSTER MAP
+# TAB 4 — OCCUPATION CLUSTERS
 # ─────────────────────────────────────────────────────────────────────────────
 with tabs[3]:
     st.markdown('<div class="section-hdr">Occupation Cluster Map</div>',
                 unsafe_allow_html=True)
-    st.caption("Occupations grouped by skill similarity — reveals natural 'skill families' "
-               "that cross traditional industry boundaries.")
+    st.caption("Occupations grouped by semantic skill similarity — "
+               "reveals natural skill families across industry boundaries.")
 
-    n_clust = st.slider("Number of skill clusters", 3, 20, 8, key="clust_n")
+    n_clust  = st.slider("Clusters", 3, 20, 8, key="clust_n")
+    dim_meth = st.radio("Layout", ["UMAP", "PCA"], horizontal=True, key="clust_dim")
 
     from sklearn.cluster import KMeans
-    from sklearn.decomposition import PCA
 
-    mat_vals = occ_uoc_bin.values.astype(float)
-    if mat_vals.shape[0] >= n_clust:
-        km = KMeans(n_clusters=n_clust, random_state=42, n_init=10)
-        cluster_labels = km.fit_predict(mat_vals)
+    mat_vals = tfidf_norm.toarray() if hasattr(tfidf_norm, "toarray") else tfidf_norm
+    k        = min(n_clust, len(occ_codes)-1)
+    km       = KMeans(n_clusters=k, random_state=42, n_init=10)
+    clusters = km.fit_predict(mat_vals)
 
-        # 2D PCA for visualisation
-        n_comp = min(2, mat_vals.shape[1]-1, mat_vals.shape[0]-1)
-        pca = PCA(n_components=n_comp, random_state=42)
-        coords = pca.fit_transform(mat_vals)
+    if dim_meth == "UMAP":
+        try:
+            import umap
+            reducer = umap.UMAP(n_components=2, random_state=42,
+                                n_neighbors=min(15, len(occ_codes)-1))
+            coords = reducer.fit_transform(mat_vals)
+        except ImportError:
+            from sklearn.decomposition import PCA
+            coords = PCA(n_components=2, random_state=42).fit_transform(mat_vals)
+    else:
+        from sklearn.decomposition import PCA
+        coords = PCA(n_components=2, random_state=42).fit_transform(mat_vals)
 
-        clust_df = occ_meta.copy()
-        clust_df["cluster"] = cluster_labels
-        if coords.shape[1] >= 1: clust_df["pc1"] = coords[:,0]
-        if coords.shape[1] >= 2: clust_df["pc2"] = coords[:,1]
+    clust_df = occ_meta.copy()
+    clust_df["cluster"] = clusters
+    clust_df["x"] = coords[:, 0]
+    clust_df["y"] = coords[:, 1]
 
-        # Cluster labels from top shared UOCs
-        cluster_names = {}
-        for c in range(n_clust):
-            cidx = np.where(cluster_labels == c)[0]
-            if len(cidx) == 0:
-                cluster_names[c] = f"Cluster {c}"
-                continue
-            sub = mat_vals[cidx].sum(axis=0)
-            top_uocs = occ_uoc_bin.columns[sub.argsort()[-3:][::-1]].tolist()
-            top_tps = [u[:3] for u in top_uocs]
-            cluster_names[c] = " · ".join(dict.fromkeys(top_tps))
+    # Cluster names from top TF-IDF terms
+    fn = tfidf_vec.get_feature_names_out()
+    cluster_names = {}
+    for c in range(k):
+        cidx = np.where(clusters == c)[0]
+        if not len(cidx):
+            cluster_names[c] = f"Cluster {c}"
+            continue
+        centroid = mat_vals[cidx].mean(axis=0)
+        top = centroid.argsort()[-4:][::-1]
+        terms = [fn[i] for i in top if i < len(fn)]
+        cluster_names[c] = " · ".join(terms[:3])
 
-        clust_df["cluster_name"] = clust_df["cluster"].map(cluster_names)
+    clust_df["cluster_name"] = clust_df["cluster"].map(cluster_names)
 
-        fig_clust = px.scatter(
-            clust_df, x="pc1", y="pc2",
-            color="cluster_name",
-            size="skill_count",
-            hover_data=["title","anzsco_code","uoc_count","major"],
-            text="title",
-            height=600,
-            title=f"Occupation Skill Families — {n_clust} clusters",
-        )
-        fig_clust.update_traces(
-            textposition="top center",
-            textfont=dict(size=8),
-            marker=dict(opacity=0.8, line=dict(width=0.5, color="#0a1628")),
-        )
-        fig_clust.update_layout(
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="#080e1a",
-            font_color="#7eb8f7",
-            xaxis=dict(title="Skill dimension 1", gridcolor="#1a2a4a"),
-            yaxis=dict(title="Skill dimension 2", gridcolor="#1a2a4a"),
-        )
-        st.plotly_chart(fig_clust, use_container_width=True)
+    fig_clust = px.scatter(
+        clust_df, x="x", y="y",
+        color="cluster_name",
+        size="skill_count",
+        hover_data=["title", "anzsco_code", "major", "uoc_count"],
+        text="title",
+        height=620,
+        title=f"Occupation Skill Families — {k} semantic clusters",
+        labels={"x": "Dimension 1", "y": "Dimension 2"},
+    )
+    fig_clust.update_traces(
+        textposition="top center",
+        textfont=dict(size=8),
+        marker=dict(opacity=0.82, line=dict(width=0.5, color="#0a1628")),
+    )
+    fig_clust.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="#080e1a",
+        font_color="#7eb8f7",
+        xaxis=dict(gridcolor="#1a2a4a"),
+        yaxis=dict(gridcolor="#1a2a4a"),
+    )
+    st.plotly_chart(fig_clust, use_container_width=True)
 
-        # Cluster details
-        st.markdown('<div class="section-hdr">Cluster composition</div>',
-                    unsafe_allow_html=True)
-        for c in range(n_clust):
-            sub = clust_df[clust_df["cluster"] == c].sort_values(
-                "skill_count", ascending=False)
-            if sub.empty: continue
-            with st.expander(
-                f"**{cluster_names[c]}** — {len(sub)} occupations, "
-                f"{int(sub['skill_count'].sum())} total skills"
-            ):
-                st.dataframe(
-                    sub[["title","major","uoc_count","skill_count","tp_count"]].rename(columns={
-                        "title":"Occupation","major":"Major Group",
-                        "uoc_count":"UOCs","skill_count":"Skills","tp_count":"TPs"
-                    }),
-                    use_container_width=True, hide_index=True,
-                )
+    st.markdown('<div class="section-hdr">Cluster composition</div>',
+                unsafe_allow_html=True)
+    for c in range(k):
+        sub = clust_df[clust_df["cluster"] == c].sort_values(
+            "skill_count", ascending=False)
+        if sub.empty: continue
+        with st.expander(
+            f"**{cluster_names[c]}** — {len(sub)} occupations, "
+            f"{int(sub['skill_count'].sum()):,} skills"
+        ):
+            st.dataframe(
+                sub[["title","major","uoc_count","skill_count"]].rename(columns={
+                    "title":"Occupation","major":"Major Group",
+                    "uoc_count":"UOCs","skill_count":"Skills",
+                }),
+                use_container_width=True, hide_index=True,
+            )
 
 # ─────────────────────────────────────────────────────────────────────────────
-# TAB 5 — CROSS-TP SKILL BRIDGES
+# TAB 5 — CROSS-TP BRIDGES
 # ─────────────────────────────────────────────────────────────────────────────
 with tabs[4]:
     st.markdown('<div class="section-hdr">Cross-TP Skill Bridges</div>',
                 unsafe_allow_html=True)
-    st.caption("UOCs from one training package that deliver skills relevant to occupations "
-               "in a completely different TP — hidden transferability across industries.")
+    st.caption("Occupations from different training packages that share "
+               "semantically similar skills — hidden transferability across industries.")
 
     tp_list_all = sorted(df["tp_code"].dropna().unique())
     b1, b2 = st.columns(2)
     with b1:
-        src_tp = st.selectbox("Source training package", tp_list_all, key="bridge_src")
+        src_tp = st.selectbox("Source TP", tp_list_all, key="bridge_src")
     with b2:
-        tgt_tp = st.selectbox("Target training package",
+        tgt_tp = st.selectbox("Target TP",
             [t for t in tp_list_all if t != src_tp],
             key="bridge_tgt")
 
-    min_bridge_sim = st.slider("Min similarity for bridge", 0.1, 0.8, 0.2, 0.05,
-                               key="bridge_sim")
+    min_bridge = st.slider("Min semantic similarity", 0.05, 0.9, 0.20, 0.05,
+                           key="bridge_sim")
 
-    # Get occupations for each TP
-    src_occs = df[df["tp_code"] == src_tp]["anzsco_code"].unique()
-    tgt_occs = df[df["tp_code"] == tgt_tp]["anzsco_code"].unique()
-
-    valid_src = [c for c in src_occs if c in occ_uoc_bin.index]
-    valid_tgt = [c for c in tgt_occs if c in occ_uoc_bin.index]
+    src_occs  = df[df["tp_code"] == src_tp]["anzsco_code"].unique()
+    tgt_occs  = df[df["tp_code"] == tgt_tp]["anzsco_code"].unique()
+    valid_src = [c for c in src_occs if c in occ_codes]
+    valid_tgt = [c for c in tgt_occs if c in occ_codes]
 
     if not valid_src or not valid_tgt:
         st.warning("Not enough occupations in selected TPs.")
     else:
-        src_idx = [list(occ_uoc_bin.index).index(c) for c in valid_src]
-        tgt_idx = [list(occ_uoc_bin.index).index(c) for c in valid_tgt]
-        cross_sim = jaccard[np.ix_(src_idx, tgt_idx)]
+        src_idx = [occ_codes.index(c) for c in valid_src]
+        tgt_idx = [occ_codes.index(c) for c in valid_tgt]
+        cross   = sim_matrix[np.ix_(src_idx, tgt_idx)]
 
         bridges = []
         for i, si in enumerate(valid_src):
             for j, tj in enumerate(valid_tgt):
-                sim = float(cross_sim[i,j])
-                if sim >= min_bridge_sim:
-                    shared = set(occ_uoc_bin.columns[occ_uoc_bin.loc[si] > 0]) & \
-                             set(occ_uoc_bin.columns[occ_uoc_bin.loc[tj] > 0])
+                s = float(cross[i, j])
+                if s >= min_bridge:
                     bridges.append({
-                        "src_code": si,
+                        "src_code":  si,
                         "src_title": occ_label.get(si, si),
-                        "tgt_code": tj,
+                        "tgt_code":  tj,
                         "tgt_title": occ_label.get(tj, tj),
-                        "similarity": round(sim, 3),
-                        "shared_uocs": len(shared),
-                        "bridge_uocs": sorted(shared),
+                        "similarity": round(s, 3),
                     })
 
         if not bridges:
-            st.info(f"No bridges found between {src_tp} and {tgt_tp} "
-                    f"at similarity ≥ {min_bridge_sim}. Try lowering the threshold.")
+            st.info(f"No bridges found at similarity ≥ {min_bridge}. "
+                    "Try lowering the threshold.")
         else:
-            bridges_df = pd.DataFrame(bridges).sort_values("similarity", ascending=False)
+            bridges_df = pd.DataFrame(bridges).sort_values(
+                "similarity", ascending=False)
 
-            st.success(f"Found **{len(bridges)}** skill bridges between "
-                       f"**{src_tp}** and **{tgt_tp}**")
+            st.success(
+                f"**{len(bridges)}** semantic bridges between "
+                f"**{src_tp}** and **{tgt_tp}**"
+            )
 
-            # Sankey diagram
+            # Sankey
             src_labels = bridges_df["src_title"].unique().tolist()
             tgt_labels = bridges_df["tgt_title"].unique().tolist()
             all_labels = src_labels + tgt_labels
@@ -694,13 +733,14 @@ with tabs[4]:
             fig_sankey = go.Figure(go.Sankey(
                 node=dict(
                     label=all_labels,
-                    color=["#ef9f27"]*len(src_labels) + ["#7eb8f7"]*len(tgt_labels),
+                    color=(["#ef9f27"] * len(src_labels) +
+                           ["#7eb8f7"] * len(tgt_labels)),
                     pad=15, thickness=20,
                 ),
                 link=dict(
                     source=[label_idx[r["src_title"]] for _, r in bridges_df.iterrows()],
                     target=[label_idx[r["tgt_title"]] for _, r in bridges_df.iterrows()],
-                    value=[r["shared_uocs"] for _, r in bridges_df.iterrows()],
+                    value=[int(r["similarity"] * 100) for _, r in bridges_df.iterrows()],
                     color="rgba(126,184,247,0.3)",
                 ),
             ))
@@ -708,28 +748,24 @@ with tabs[4]:
                 height=500,
                 paper_bgcolor="rgba(0,0,0,0)",
                 font_color="#7eb8f7",
-                font_family="IBM Plex Mono",
-                title=f"Skill bridges: {src_tp} → {tgt_tp}",
+                title=f"Semantic bridges: {src_tp} → {tgt_tp}",
             )
             st.plotly_chart(fig_sankey, use_container_width=True)
 
-            # Bridge details
-            st.markdown('<div class="section-hdr">Bridge details</div>',
-                        unsafe_allow_html=True)
-            for _, row in bridges_df.head(15).iterrows():
-                with st.expander(
-                    f"**{row['src_title'][:30]}** → **{row['tgt_title'][:30]}** "
-                    f"· {row['shared_uocs']} shared UOCs · sim {row['similarity']:.3f}"
-                ):
-                    bridge_uoc_df = df[df["unit_code"].isin(row["bridge_uocs"])][
-                        ["unit_code","unit_title","tp_code"]
-                    ].drop_duplicates("unit_code")
-                    st.dataframe(bridge_uoc_df, use_container_width=True,
-                                 hide_index=True)
-
+            # Detail table
+            st.dataframe(
+                bridges_df[["src_title","tgt_title","similarity"]].rename(columns={
+                    "src_title": src_tp, "tgt_title": tgt_tp,
+                    "similarity": "Semantic similarity",
+                }),
+                use_container_width=True, hide_index=True,
+                column_config={
+                    "Semantic similarity": st.column_config.ProgressColumn(
+                        min_value=0, max_value=1, format="%.3f"),
+                },
+            )
             st.download_button(
-                "⬇ Export cross-TP bridges CSV",
-                bridges_df[["src_title","tgt_title","similarity","shared_uocs"]].to_csv(
-                    index=False).encode(),
+                "⬇ Export bridges CSV",
+                bridges_df.to_csv(index=False).encode(),
                 f"bridges_{src_tp}_{tgt_tp}.csv", "text/csv",
             )
