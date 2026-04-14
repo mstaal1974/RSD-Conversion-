@@ -332,7 +332,7 @@ with tab3:
         )
         .reset_index()
     )
-    pivot["avg_confidence"] = pivot["avg_confidence"].round(3)
+    pivot["avg_confidence"] = pd.to_numeric(pivot["avg_confidence"], errors="coerce").round(3)
     pivot = pivot.sort_values(["anzsco_code", "skill_count"], ascending=[True, False])
 
     st.dataframe(
