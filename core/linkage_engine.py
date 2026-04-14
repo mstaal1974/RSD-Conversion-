@@ -10,6 +10,9 @@ Priority 4 (0.30) — ASC Specialist Task keyword match against skill statements
 
 Results written to uoc_occupation_links with confidence scores,
 mapping_source, and is_primary flag.
+
+NOTE: TGA API stores ANZSCO as scheme='01' (numeric code).
+      Queries match both '01' and legacy string names for compatibility.
 """
 from __future__ import annotations
 import logging
@@ -32,24 +35,19 @@ CONF = {
 class LinkageEngine:
 
     def __init__(self, engine: Engine, pipeline_run_id: int):
-        self.engine         = engine
+        self.engine          = engine
         self.pipeline_run_id = pipeline_run_id
 
     # ── Main entry point ──────────────────────────────────────────────────────
     def run(self, uoc_codes: list[str] | None = None,
             run_asc: bool = True,
             progress_callback=None) -> dict:
-        """
-        Run full linkage for all (or specified) UOCs.
-        Returns {links_created, links_updated}
-        """
         counts = {"links_created": 0, "links_updated": 0}
 
-        uocs = self._get_uoc_list(uoc_codes)
+        uocs  = self._get_uoc_list(uoc_codes)
         total = len(uocs)
-        log.info(f"Running linkage for {total} UOCs")
+        log.info("Running linkage for %d UOCs", total)
 
-        # Preload ASC data if needed
         asc_vectorizer = asc_matrix = asc_df = None
         if run_asc:
             asc_vectorizer, asc_matrix, asc_df = self._load_asc_data()
@@ -63,13 +61,13 @@ class LinkageEngine:
                                    asc_matrix, asc_df)
                 counts["links_created"] += n
             except Exception as e:
-                log.error(f"Linkage failed for {uoc_code}: {e}")
+                log.error("Linkage failed for %s: %s", uoc_code, e)
 
-        # Mark is_primary for all UOCs
         self._mark_primary()
 
         if progress_callback:
-            progress_callback(1.0, f"Linked {counts['links_created']} occupation pairs")
+            progress_callback(1.0,
+                f"Linked {counts['links_created']} occupation pairs")
         return counts
 
     # ── Per-UOC linkage ───────────────────────────────────────────────────────
@@ -78,11 +76,16 @@ class LinkageEngine:
         links = []
 
         # ── Priority 1: Direct UOC classifications ────────────────────────────
+        # TGA stores ANZSCO as scheme='01'; also check legacy string names
         with self.engine.connect() as conn:
             direct = conn.execute(text("""
                 SELECT scheme, code, value FROM uoc_classifications
                 WHERE uoc_code = :uc
-                AND scheme IN ('ANZSCO Identifier', 'Taxonomy-Occupation', '01')
+                AND scheme IN (
+                    'ANZSCO Identifier',
+                    'Taxonomy-Occupation',
+                    '01'
+                )
             """), {"uc": uoc_code}).fetchall()
 
         for row in direct:
@@ -98,27 +101,38 @@ class LinkageEngine:
                 ))
 
         # ── Priority 2 & 3: Inheritance from qualifications ───────────────────
+        # t  = ANZSCO code    (scheme '01' or 'ANZSCO Identifier')
+        # t2 = ASCED code     (scheme '04' or 'ASCED...')
+        # t3 = Industry sector (scheme '05' or 'Taxonomy-Industry Sector')
+        # t4 = Occupation title (scheme '06' or 'Taxonomy-Occupation')
         with self.engine.connect() as conn:
             memberships = conn.execute(text("""
                 SELECT m.qual_code, m.membership_type,
                        m.is_imported, m.owner_tp_code,
-                       t.code  AS anzsco_code,
-                       t.value AS anzsco_title,
+                       t.code   AS anzsco_code,
+                       t.value  AS anzsco_title,
                        t2.code  AS asced_code,
                        t2.value AS asced_title,
                        t3.value AS industry_sector,
                        t4.value AS occupation_titles
                 FROM uoc_qual_memberships m
-                JOIN qual_registry q ON q.qual_code = m.qual_code
+                JOIN qual_registry q
+                    ON q.qual_code = m.qual_code
                     AND q.status = 'Current'
-                LEFT JOIN qual_taxonomy_links t ON t.qual_code = m.qual_code
-                   AND t.scheme IN ('ANZSCO Identifier', '01')
-                LEFT JOIN qual_taxonomy_links t2 ON t2.qual_code = m.qual_code
-                    AND t2.scheme LIKE 'ASCED%'
-                LEFT JOIN qual_taxonomy_links t3 ON t3.qual_code = m.qual_code
-                    AND t3.scheme = 'Taxonomy-Industry Sector'
-                LEFT JOIN qual_taxonomy_links t4 ON t4.qual_code = m.qual_code
-                    AND t4.scheme IN ('Taxonomy-Occupation', '01')
+                LEFT JOIN qual_taxonomy_links t
+                    ON t.qual_code = m.qual_code
+                    AND t.scheme IN ('ANZSCO Identifier', '01')
+                LEFT JOIN qual_taxonomy_links t2
+                    ON t2.qual_code = m.qual_code
+                    AND (t2.scheme LIKE 'ASCED%' OR t2.scheme = '04')
+                LEFT JOIN qual_taxonomy_links t3
+                    ON t3.qual_code = m.qual_code
+                    AND (t3.scheme = 'Taxonomy-Industry Sector'
+                         OR t3.scheme = '05')
+                LEFT JOIN qual_taxonomy_links t4
+                    ON t4.qual_code = m.qual_code
+                    AND (t4.scheme = 'Taxonomy-Occupation'
+                         OR t4.scheme = '06')
                 WHERE m.uoc_code = :uc
             """), {"uc": uoc_code}).fetchall()
 
@@ -129,7 +143,7 @@ class LinkageEngine:
              industry_sector, occupation_titles) = row
 
             if not anzsco_code and not anzsco_title:
-                continue  # Qual has no ANZSCO — skip
+                continue
 
             if mtype == "core":
                 src = "core_native" if not is_imported else "core_imported"
@@ -149,7 +163,7 @@ class LinkageEngine:
                 occupation_titles=occupation_titles,
             ))
 
-        # ── Priority 4: ASC matching — only if no high-confidence links ───────
+        # ── Priority 4: ASC matching ───────────────────────────────────────────
         has_strong = any(lk["confidence"] >= 0.70 for lk in links)
         if not has_strong and asc_df is not None and len(asc_df) > 0:
             stmts = self._get_skill_statements(uoc_code)
@@ -184,14 +198,15 @@ class LinkageEngine:
                 WHERE uoc_code = :uc AND valid_to IS NULL
             """), {"uc": uoc_code})
 
-        # Insert new — includes Ref 1-4 enriched columns
+        # Insert new links
         with self.engine.begin() as conn:
             for lk in best.values():
                 conn.execute(text("""
                     INSERT INTO uoc_occupation_links (
                         uoc_code, anzsco_code, anzsco_title, anzsco_major_group,
                         asced_code, asced_title, industry_sector, occupation_titles,
-                        confidence, mapping_source, source_qual_code, source_asc_task_id,
+                        confidence, mapping_source, source_qual_code,
+                        source_asc_task_id,
                         is_primary, pipeline_run_id,
                         anzsco_uri, vc_context, vc_type,
                         aqf_level, skill_level_label,
@@ -205,25 +220,31 @@ class LinkageEngine:
                         :aqf_level, :skill_label,
                         :is_imported, :owner_tp, :home_tp_title
                     )
-                    ON CONFLICT (uoc_code, anzsco_code, pipeline_run_id) DO UPDATE SET
-                        confidence       = GREATEST(EXCLUDED.confidence,
-                                                    uoc_occupation_links.confidence),
-                        mapping_source   = EXCLUDED.mapping_source,
-                        aqf_level        = COALESCE(EXCLUDED.aqf_level,
-                                                    uoc_occupation_links.aqf_level),
-                        skill_level_label = COALESCE(EXCLUDED.skill_level_label,
-                                                     uoc_occupation_links.skill_level_label),
-                        is_imported      = EXCLUDED.is_imported,
-                        owner_tp_code    = EXCLUDED.owner_tp_code
-                """), {**lk, "rid": self.pipeline_run_id,
-                        "anzsco_uri": lk.get("anzsco_uri",""),
-                        "vc_ctx": "https://www.w3.org/2018/credentials/v1",
-                        "vc_type": "TaxonomicAlignment",
-                        "aqf_level": lk.get("aqf_level",""),
-                        "skill_label": lk.get("skill_label",""),
-                        "is_imported": lk.get("is_imported", False),
-                        "owner_tp": lk.get("owner_tp",""),
-                        "home_tp_title": lk.get("home_tp_title",""),
+                    ON CONFLICT (uoc_code, anzsco_code, pipeline_run_id)
+                    DO UPDATE SET
+                        confidence        = GREATEST(
+                                              EXCLUDED.confidence,
+                                              uoc_occupation_links.confidence),
+                        mapping_source    = EXCLUDED.mapping_source,
+                        aqf_level         = COALESCE(
+                                              EXCLUDED.aqf_level,
+                                              uoc_occupation_links.aqf_level),
+                        skill_level_label = COALESCE(
+                                              EXCLUDED.skill_level_label,
+                                              uoc_occupation_links.skill_level_label),
+                        is_imported       = EXCLUDED.is_imported,
+                        owner_tp_code     = EXCLUDED.owner_tp_code
+                """), {
+                    **lk,
+                    "rid":          self.pipeline_run_id,
+                    "anzsco_uri":   lk.get("anzsco_uri", ""),
+                    "vc_ctx":       "https://www.w3.org/2018/credentials/v1",
+                    "vc_type":      "TaxonomicAlignment",
+                    "aqf_level":    lk.get("aqf_level", ""),
+                    "skill_label":  lk.get("skill_label", ""),
+                    "is_imported":  lk.get("is_imported", False),
+                    "owner_tp":     lk.get("owner_tp", ""),
+                    "home_tp_title": lk.get("home_tp_title", ""),
                 })
 
         return len(best)
@@ -233,39 +254,34 @@ class LinkageEngine:
                    confidence, source, source_qual,
                    asced_code=None, asced_title=None,
                    industry_sector=None, occupation_titles=None,
-                   asc_task_id=None,
-                   aqf_level=None, is_imported=False,
-                   owner_tp=None, home_tp_title=None) -> dict:
-        """Build a link dict including all Ref 1-4 enriched fields."""
+                   asc_task_id=None, aqf_level=None,
+                   is_imported=False, owner_tp=None,
+                   home_tp_title=None) -> dict:
         from core.rsd_record import anzsco_uri, aqf_to_skill_label
         major = self._anzsco_major(anzsco_code, anzsco_title)
         return {
-            # Core fields
-            "uoc_code":         uoc_code,
-            "anzsco_code":      anzsco_code or "",
-            "anzsco_title":     anzsco_title or "",
+            "uoc_code":           uoc_code,
+            "anzsco_code":        anzsco_code or "",
+            "anzsco_title":       anzsco_title or "",
             "anzsco_major_group": major,
-            "asced_c":          asced_code or "",
-            "asced_t":          asced_title or "",
-            "ind":              industry_sector or "",
-            "occ_t":            occupation_titles or "",
-            "conf":             float(confidence),
-            "src":              source,
-            "sq":               source_qual,
-            "ast":              asc_task_id,
-            "confidence":       float(confidence),
-            "ac":               anzsco_code or "",
-            "at":               anzsco_title or "",
-            "amg":              major,
-            # Ref 1 — W3C VC URI
-            "anzsco_uri":      anzsco_uri(anzsco_code),
-            # Ref 2 — AQF level
-            "aqf_level":       aqf_level or "",
-            "skill_label":     aqf_to_skill_label(aqf_level),
-            # Ref 4 — imported flag
-            "is_imported":     is_imported,
-            "owner_tp":        owner_tp or (uoc_code[:3] if uoc_code else ""),
-            "home_tp_title":   home_tp_title or "",
+            "asced_c":            asced_code or "",
+            "asced_t":            asced_title or "",
+            "ind":                industry_sector or "",
+            "occ_t":              occupation_titles or "",
+            "conf":               float(confidence),
+            "src":                source,
+            "sq":                 source_qual,
+            "ast":                asc_task_id,
+            "confidence":         float(confidence),
+            "ac":                 anzsco_code or "",
+            "at":                 anzsco_title or "",
+            "amg":                major,
+            "anzsco_uri":         anzsco_uri(anzsco_code),
+            "aqf_level":          aqf_level or "",
+            "skill_label":        aqf_to_skill_label(aqf_level),
+            "is_imported":        is_imported,
+            "owner_tp":           owner_tp or (uoc_code[:3] if uoc_code else ""),
+            "home_tp_title":      home_tp_title or "",
         }
 
     def _anzsco_major(self, code: str, title: str) -> str:
@@ -303,62 +319,64 @@ class LinkageEngine:
         with self.engine.connect() as conn:
             rows = conn.execute(text("""
                 SELECT DISTINCT skill_statement FROM rsd_skill_records
-                WHERE unit_code = :uc AND skill_statement IS NOT NULL
+                WHERE unit_code = :uc
+                AND skill_statement IS NOT NULL
                 AND skill_statement != ''
                 LIMIT 20
             """), {"uc": uoc_code}).fetchall()
         return [r[0] for r in rows]
 
     def _load_asc_data(self):
-        """Load ASC specialist tasks from DB into sklearn TF-IDF matrix."""
         try:
             from sklearn.feature_extraction.text import TfidfVectorizer
-            from sklearn.metrics.pairwise import cosine_similarity as cos_sim
 
             with self.engine.connect() as conn:
                 rows = conn.execute(text("""
-                    SELECT task_id, task_description, anzsco_code, anzsco_title
+                    SELECT task_id, task_description,
+                           anzsco_code, anzsco_title
                     FROM asc_specialist_tasks
                 """)).fetchall()
 
             if not rows:
                 return None, None, None
 
-            asc_df = pd.DataFrame(rows,
-                columns=["task_id","task_description","anzsco_code","anzsco_title"])
-
+            asc_df = pd.DataFrame(
+                rows,
+                columns=["task_id", "task_description",
+                         "anzsco_code", "anzsco_title"],
+            )
             vectorizer = TfidfVectorizer(
-                ngram_range=(1, 2), stop_words="english", max_features=10000)
+                ngram_range=(1, 2), stop_words="english",
+                max_features=10000,
+            )
             matrix = vectorizer.fit_transform(asc_df["task_description"])
             return vectorizer, matrix, asc_df
 
         except Exception as e:
-            log.warning(f"Could not load ASC data: {e}")
+            log.warning("Could not load ASC data: %s", e)
             return None, None, None
 
     def _asc_match(self, statement: str, vectorizer, matrix,
                    asc_df, threshold: float = 0.25) -> list[dict]:
-        """TF-IDF cosine similarity match against ASC specialist tasks."""
         try:
             from sklearn.metrics.pairwise import cosine_similarity
-            vec = vectorizer.transform([statement])
+            vec    = vectorizer.transform([statement])
             scores = cosine_similarity(vec, matrix)[0]
             matches = []
             for i, score in enumerate(scores):
                 if score >= threshold:
                     row = asc_df.iloc[i]
                     matches.append({
-                        "task_id":     row["task_id"],
-                        "anzsco_code": row["anzsco_code"],
+                        "task_id":      row["task_id"],
+                        "anzsco_code":  row["anzsco_code"],
                         "anzsco_title": row["anzsco_title"],
-                        "score":       round(float(score), 3),
+                        "score":        round(float(score), 3),
                     })
             return sorted(matches, key=lambda x: -x["score"])[:3]
         except Exception:
             return []
 
     def _mark_primary(self):
-        """Set is_primary=True on the highest-confidence current link per UOC."""
         with self.engine.begin() as conn:
             conn.execute(text("""
                 UPDATE uoc_occupation_links SET is_primary = FALSE
@@ -377,16 +395,25 @@ class LinkageEngine:
                 )
             """), {"rid": self.pipeline_run_id})
 
-    # ── Query helpers for the Streamlit page ──────────────────────────────────
+    # ── Static query helpers ──────────────────────────────────────────────────
+    @staticmethod
+    def tables_exist(engine: Engine) -> bool:
+        try:
+            with engine.connect() as conn:
+                row = conn.execute(text("""
+                    SELECT COUNT(*) FROM information_schema.tables
+                    WHERE table_schema = 'public'
+                    AND table_name = 'uoc_occupation_links'
+                """)).fetchone()
+            return bool(row and row[0] > 0)
+        except Exception:
+            return False
+
     @staticmethod
     def get_linked_records(engine: Engine,
                            unit_code: str | None = None,
                            min_confidence: float = 0.0,
                            limit: int = 500) -> pd.DataFrame:
-        """
-        Join rsd_skill_records with uoc_occupation_links.
-        Returns enriched DataFrame ready for display/export.
-        """
         filter_sql = "AND s.unit_code = :uc" if unit_code else ""
         with engine.connect() as conn:
             rows = conn.execute(text(f"""
@@ -413,28 +440,32 @@ class LinkageEngine:
 
     @staticmethod
     def coverage_stats(engine: Engine) -> dict:
-        """Return coverage statistics for the taxonomy page dashboard."""
-        with engine.connect() as conn:
-            stats = conn.execute(text("""
-                SELECT
-                    COUNT(DISTINCT s.unit_code) AS total_uocs,
-                    COUNT(DISTINCT CASE WHEN o.uoc_code IS NOT NULL
-                          THEN s.unit_code END) AS linked_uocs,
-                    COUNT(DISTINCT CASE WHEN o.confidence >= 0.70
-                          THEN s.unit_code END) AS high_conf_uocs,
-                    COUNT(DISTINCT o.anzsco_code) AS unique_anzsco,
-                    COUNT(DISTINCT o.anzsco_major_group) AS major_groups,
-                    ROUND(AVG(o.confidence)::numeric, 3) AS avg_confidence
-                FROM rsd_skill_records s
-                LEFT JOIN uoc_occupation_links o
-                    ON o.uoc_code = s.unit_code
-                    AND o.is_primary = TRUE
-                    AND o.valid_to IS NULL
-            """)).fetchone()
-        if stats:
-            return dict(zip(
-                ["total_uocs","linked_uocs","high_conf_uocs",
-                 "unique_anzsco","major_groups","avg_confidence"],
-                stats
-            ))
+        if not LinkageEngine.tables_exist(engine):
+            return {}
+        try:
+            with engine.connect() as conn:
+                stats = conn.execute(text("""
+                    SELECT
+                        COUNT(DISTINCT s.unit_code) AS total_uocs,
+                        COUNT(DISTINCT CASE WHEN o.uoc_code IS NOT NULL
+                              THEN s.unit_code END) AS linked_uocs,
+                        COUNT(DISTINCT CASE WHEN o.confidence >= 0.70
+                              THEN s.unit_code END) AS high_conf_uocs,
+                        COUNT(DISTINCT o.anzsco_code) AS unique_anzsco,
+                        COUNT(DISTINCT o.anzsco_major_group) AS major_groups,
+                        ROUND(AVG(o.confidence)::numeric, 3) AS avg_confidence
+                    FROM rsd_skill_records s
+                    LEFT JOIN uoc_occupation_links o
+                        ON o.uoc_code = s.unit_code
+                        AND o.is_primary = TRUE
+                        AND o.valid_to IS NULL
+                """)).fetchone()
+            if stats:
+                return dict(zip(
+                    ["total_uocs", "linked_uocs", "high_conf_uocs",
+                     "unique_anzsco", "major_groups", "avg_confidence"],
+                    stats,
+                ))
+        except Exception:
+            pass
         return {}
