@@ -157,9 +157,9 @@ def load_statements(run_id, unit_prefix, tp_prefix):
         ).mappings().all()
     df = pd.DataFrame([dict(r) for r in rows]) if rows else pd.DataFrame()
     if not df.empty and unit_prefix:
-        df = df[df["unit_code"].str.upper().str.startswith(unit_prefix.upper())]
+        df = df[df["unit_code"].fillna("").str.upper().str.startswith(unit_prefix.upper())]
     if not df.empty and tp_prefix:
-        df = df[df["tp_code"].str.upper().str.startswith(tp_prefix.upper())]
+        df = df[df["tp_code"].fillna("").str.upper().str.startswith(tp_prefix.upper())]
     return df
 
 df_raw = load_statements(sel_run_id, unit_filter, tp_filter)
