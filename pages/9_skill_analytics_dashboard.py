@@ -358,7 +358,8 @@ with left_col:
                 return [round(min(1, base + np.random.uniform(0, 0.3)), 2) for _ in dims]
 
             fig_radar = go.Figure()
-            colors = ["#7eb8f7", "#ef9f27"]
+            colors      = ["#7eb8f7", "#ef9f27"]
+            fill_colors = ["rgba(126,184,247,0.15)", "rgba(239,159,39,0.15)"]
             for i, (_, row) in enumerate(top_pairs.head(2).iterrows()):
                 vals = fake_radar(row["similarity"])
                 vals_closed = vals + [vals[0]]
@@ -368,7 +369,7 @@ with left_col:
                     fill="toself",
                     name=f"{row['unit_b']} ({row['similarity']:.2f})",
                     line_color=colors[i],
-                    fillcolor=colors[i].replace("f7","f7").replace("#","rgba(").replace("f7", "f7,0.15)") if i else "rgba(126,184,247,0.15)",
+                    fillcolor=fill_colors[i],
                 ))
             fig_radar.update_layout(
                 polar=dict(
