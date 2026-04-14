@@ -166,7 +166,7 @@ def compute_everything(statements: list[str], n_clust: int, thresh: float,
         from sklearn.manifold import TSNE
         perp = min(30, len(statements)//4, embeddings.shape[0]-1)
         tsne = TSNE(n_components=n_out, perplexity=max(5,perp),
-                    random_state=42, n_iter=500)
+                    random_state=42, max_iter=500)
         coords = tsne.fit_transform(embeddings)
     else:
         pca = PCA(n_components=n_out, random_state=42)
