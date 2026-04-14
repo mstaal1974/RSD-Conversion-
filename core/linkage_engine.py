@@ -82,7 +82,7 @@ class LinkageEngine:
             direct = conn.execute(text("""
                 SELECT scheme, code, value FROM uoc_classifications
                 WHERE uoc_code = :uc
-                AND scheme IN ('ANZSCO Identifier','Taxonomy-Occupation')
+                AND scheme IN ('ANZSCO Identifier', 'Taxonomy-Occupation', '01')
             """), {"uc": uoc_code}).fetchall()
 
         for row in direct:
@@ -112,13 +112,13 @@ class LinkageEngine:
                 JOIN qual_registry q ON q.qual_code = m.qual_code
                     AND q.status = 'Current'
                 LEFT JOIN qual_taxonomy_links t ON t.qual_code = m.qual_code
-                    AND t.scheme = 'ANZSCO Identifier'
+                   AND t.scheme IN ('ANZSCO Identifier', '01')
                 LEFT JOIN qual_taxonomy_links t2 ON t2.qual_code = m.qual_code
                     AND t2.scheme LIKE 'ASCED%'
                 LEFT JOIN qual_taxonomy_links t3 ON t3.qual_code = m.qual_code
                     AND t3.scheme = 'Taxonomy-Industry Sector'
                 LEFT JOIN qual_taxonomy_links t4 ON t4.qual_code = m.qual_code
-                    AND t4.scheme = 'Taxonomy-Occupation'
+                    AND t4.scheme IN ('Taxonomy-Occupation', '01')
                 WHERE m.uoc_code = :uc
             """), {"uc": uoc_code}).fetchall()
 
