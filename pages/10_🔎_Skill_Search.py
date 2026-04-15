@@ -259,13 +259,24 @@ def load_statements() -> pd.DataFrame:
 
 
 # ── Embedding helpers ─────────────────────────────────────────────────────────
-def embed_texts(texts: list[str], batch_size: int = 200) -> np.ndarray:
-    """Embed a list of texts using OpenAI text-embedding-3-small."""
+def embed_texts(texts: list[str], batch_size: int = 100) -> np.ndarray:
+    """Embed texts using OpenAI text-embedding-3-small with rate-limit retries."""
+    import time
     all_embeddings = []
     for i in range(0, len(texts), batch_size):
         batch = [t.strip() or "empty" for t in texts[i : i + batch_size]]
-        resp  = oai.embeddings.create(input=batch, model="text-embedding-3-small")
-        all_embeddings.extend([item.embedding for item in resp.data])
+        for attempt in range(5):
+            try:
+                resp = oai.embeddings.create(input=batch, model="text-embedding-3-small")
+                all_embeddings.extend([item.embedding for item in resp.data])
+                time.sleep(0.3)
+                break
+            except Exception as e:
+                wait = 2 ** attempt
+                st.warning(f"Batch {i//batch_size+1} failed ({e}), retrying in {wait}s…")
+                time.sleep(wait)
+        else:
+            raise RuntimeError(f"Embedding failed after 5 attempts at batch {i}")
     return np.array(all_embeddings, dtype=np.float32)
 
 
@@ -294,35 +305,48 @@ def score_label(score: float) -> str:
 # ── Build / retrieve corpus embeddings ───────────────────────────────────────
 def get_corpus_embeddings(df: pd.DataFrame) -> np.ndarray:
     """
-    Return embeddings for the full corpus, using session_state cache.
-    Re-computes only when the dataframe changes (e.g. after a new run).
+    Return embeddings for the full corpus, cached in session_state.
+    Uses small batches with rate-limit protection and exponential backoff.
     """
-    cache_key  = "corpus_embeddings"
-    count_key  = "corpus_embedding_count"
-    cached_n   = st.session_state.get(count_key, 0)
+    import time
+    cache_key = "corpus_embeddings"
+    count_key = "corpus_embedding_count"
+    cached_n  = st.session_state.get(count_key, 0)
 
     if cache_key in st.session_state and cached_n == len(df):
         return st.session_state[cache_key]
 
-    texts = df["skill_statement"].tolist()
-    n     = len(texts)
+    texts      = df["skill_statement"].tolist()
+    n          = len(texts)
+    batch_size = 100
+    n_batches  = (n + batch_size - 1) // batch_size
 
-    progress = st.progress(0, text=f"Building embeddings for {n:,} statements…")
+    progress = st.progress(0, text=f"Building embeddings for {n:,} statements ({n_batches} batches)…")
     embeddings_list = []
-    batch_size = 200
 
     for i in range(0, n, batch_size):
         batch = [t.strip() or "empty" for t in texts[i : i + batch_size]]
-        resp  = oai.embeddings.create(input=batch, model="text-embedding-3-small")
-        embeddings_list.extend([item.embedding for item in resp.data])
+        for attempt in range(5):
+            try:
+                resp = oai.embeddings.create(input=batch, model="text-embedding-3-small")
+                embeddings_list.extend([item.embedding for item in resp.data])
+                time.sleep(0.3)
+                break
+            except Exception as e:
+                wait = 2 ** attempt
+                time.sleep(wait)
+        else:
+            raise RuntimeError(f"Embedding failed after 5 attempts at batch {i}")
+
         pct = min((i + batch_size) / n, 1.0)
-        progress.progress(pct, text=f"Embedding {min(i+batch_size, n):,} / {n:,}…")
+        progress.progress(pct, text=f"Embedded {min(i+batch_size, n):,} / {n:,}…")
 
     progress.empty()
     emb = np.array(embeddings_list, dtype=np.float32)
-    st.session_state[cache_key]  = emb
-    st.session_state[count_key]  = n
+    st.session_state[cache_key] = emb
+    st.session_state[count_key] = n
     return emb
+
 
 
 # ── Hero header ───────────────────────────────────────────────────────────────
