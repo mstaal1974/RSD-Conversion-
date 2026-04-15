@@ -307,9 +307,28 @@ def update_rsd_records(engine) -> int:
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
+def load_excel(input_path: str) -> pd.DataFrame:
+    if input_path.startswith("gs://"):
+        import tempfile
+        from google.cloud import storage
+        log.info(f"Downloading from GCS: {input_path}")
+        path = input_path[5:]
+        bucket_name, blob_name = path.split("/", 1)
+        tmp = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False)
+        tmp.close()
+        client = storage.Client()
+        bucket = client.bucket(bucket_name)
+        blob = bucket.blob(blob_name)
+        blob.download_to_filename(tmp.name)
+        log.info(f"Downloaded to {tmp.name}")
+        return pd.read_excel(tmp.name)
+    else:
+        return pd.read_excel(input_path)
+
+
 def main(input_path: str) -> None:
     log.info(f"Loading: {input_path}")
-    df = pd.read_excel(input_path)
+    df = load_excel(input_path)
     log.info(f"  {len(df):,} rows, {len(df.columns)} columns")
 
     # Sanity check
