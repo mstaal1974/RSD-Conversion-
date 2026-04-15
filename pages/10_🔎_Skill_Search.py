@@ -303,64 +303,129 @@ def score_label(score: float) -> str:
 
 
 # ── Build / retrieve corpus embeddings ───────────────────────────────────────
-# Disk cache paths — survive session resets, persist as long as container runs
-_CACHE_EMB  = "/tmp/skill_search_embeddings.npy"
-_CACHE_IDS  = "/tmp/skill_search_ids.npy"
+
+def _db_cache_count(conn) -> int:
+    """Return how many embeddings are stored in the DB cache table."""
+    try:
+        r = conn.execute(text(
+            "SELECT COUNT(*) FROM skill_search_embedding_cache"
+        )).scalar()
+        return r or 0
+    except Exception:
+        return 0
 
 
-def _cache_is_valid(n_expected: int) -> bool:
-    """Check if the on-disk cache exists and matches the current row count."""
-    if not (os.path.exists(_CACHE_EMB) and os.path.exists(_CACHE_IDS)):
-        return False
-    ids = np.load(_CACHE_IDS)
-    return len(ids) == n_expected
+def _ensure_cache_table(conn):
+    """Create the embedding cache table if it doesn't exist."""
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS skill_search_embedding_cache (
+            id          BIGSERIAL PRIMARY KEY,
+            record_id   BIGINT NOT NULL UNIQUE,
+            embedding   BYTEA  NOT NULL,
+            created_at  TIMESTAMPTZ DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("""
+        CREATE INDEX IF NOT EXISTS idx_emb_cache_record_id
+        ON skill_search_embedding_cache (record_id)
+    """))
+
+
+def _load_from_db(n_expected: int) -> np.ndarray | None:
+    """Load embeddings from DB cache. Returns None if count doesn't match."""
+    try:
+        with engine.connect() as conn:
+            cached_n = _db_cache_count(conn)
+            if cached_n != n_expected:
+                return None
+            rows = conn.execute(text("""
+                SELECT embedding FROM skill_search_embedding_cache
+                ORDER BY record_id
+            """)).fetchall()
+        import io
+        vecs = [np.load(io.BytesIO(r[0])) for r in rows]
+        return np.stack(vecs).astype(np.float32)
+    except Exception as e:
+        st.warning(f"Could not load DB cache: {e}")
+        return None
+
+
+def _save_to_db(df: pd.DataFrame, emb: np.ndarray):
+    """Persist embeddings to DB in batches, keyed by record id."""
+    import io
+    BATCH = 200
+    records = []
+    for i, (idx, row) in enumerate(df.iterrows()):
+        buf = io.BytesIO()
+        np.save(buf, emb[i])
+        records.append({"record_id": int(row["id"]), "embedding": buf.getvalue()})
+
+    with engine.begin() as conn:
+        _ensure_cache_table(conn)
+        # Clear stale cache first
+        conn.execute(text("TRUNCATE skill_search_embedding_cache"))
+        for i in range(0, len(records), BATCH):
+            conn.execute(text("""
+                INSERT INTO skill_search_embedding_cache (record_id, embedding)
+                VALUES (:record_id, :embedding)
+                ON CONFLICT (record_id) DO UPDATE SET embedding = EXCLUDED.embedding
+            """), records[i : i + BATCH])
 
 
 def get_corpus_embeddings(df: pd.DataFrame) -> np.ndarray:
     """
     Return embeddings for the full corpus.
     Cache hierarchy (fastest → slowest):
-      1. session_state  — instant, lost on browser refresh
-      2. /tmp files     — fast load, survives session resets, lost on container restart
-      3. OpenAI API     — slow first build, saved to both caches above
+      1. session_state  — instant, lost on page reload
+      2. PostgreSQL DB  — permanent, survives container restarts
+      3. OpenAI API     — slow first build, saves to DB on completion
     """
-    import time
+    import time, io
     n = len(df)
 
     # ── Level 1: session_state ────────────────────────────────────────────────
     if "corpus_embeddings" in st.session_state and st.session_state.get("corpus_embedding_count") == n:
         return st.session_state["corpus_embeddings"]
 
-    # ── Level 2: disk cache ───────────────────────────────────────────────────
-    if _cache_is_valid(n):
-        st.info("Loading embeddings from disk cache…")
-        emb = np.load(_CACHE_EMB)
+    # ── Level 2: DB cache ─────────────────────────────────────────────────────
+    with st.spinner("Checking database for cached embeddings…"):
+        emb = _load_from_db(n)
+    if emb is not None:
+        st.success(f"✓ Loaded {n:,} embeddings from database cache.")
         st.session_state["corpus_embeddings"]      = emb
         st.session_state["corpus_embedding_count"] = n
         return emb
 
-    # ── Level 3: build from API ───────────────────────────────────────────────
+    # ── Level 3: build from OpenAI API ────────────────────────────────────────
+    # Check DB for a partial build we can resume
     texts      = df["skill_statement"].tolist()
-    ids        = df.index.to_numpy()
     batch_size = 100
     n_batches  = (n + batch_size - 1) // batch_size
 
-    # Resume from partial disk save if it exists
-    partial_path = "/tmp/skill_search_partial.npy"
-    if os.path.exists(partial_path):
-        partial = np.load(partial_path).tolist()
-        start_i = len(partial) // 1536 * batch_size   # approx resume point
-        # safer: count completed rows
-        start_i = (len(partial) // 1536) * batch_size
-        embeddings_list = [partial[j*1536:(j+1)*1536] for j in range(len(partial)//1536)]
-        st.info(f"Resuming from batch {start_i // batch_size} ({len(embeddings_list):,} statements already done)…")
-    else:
+    try:
+        with engine.connect() as conn:
+            _ensure_cache_table(conn)
+            partial_count = _db_cache_count(conn)
+            if 0 < partial_count < n:
+                partial_rows = conn.execute(text("""
+                    SELECT embedding FROM skill_search_embedding_cache
+                    ORDER BY record_id LIMIT :lim
+                """), {"lim": partial_count}).fetchall()
+                embeddings_list = [
+                    np.load(io.BytesIO(r[0])).tolist() for r in partial_rows
+                ]
+                start_i = partial_count
+                st.info(f"Resuming from statement {partial_count:,} — {n - partial_count:,} remaining.")
+            else:
+                embeddings_list = []
+                start_i = 0
+    except Exception:
         embeddings_list = []
         start_i = 0
 
     progress = st.progress(
-        len(embeddings_list) / n,
-        text=f"Building embeddings — {len(embeddings_list):,} / {n:,} done…"
+        start_i / n,
+        text=f"Building embeddings — {start_i:,} / {n:,}…"
     )
 
     for i in range(start_i, n, batch_size):
@@ -376,29 +441,26 @@ def get_corpus_embeddings(df: pd.DataFrame) -> np.ndarray:
                 st.warning(f"Batch {i//batch_size+1}/{n_batches} failed ({e}), retrying in {wait}s…")
                 time.sleep(wait)
         else:
-            # Save partial progress before raising so we can resume
-            flat = [x for row in embeddings_list for x in row]
-            np.save(partial_path, np.array(flat, dtype=np.float32))
-            raise RuntimeError(f"Embedding failed at batch {i} — partial progress saved, reload to resume.")
+            # Save partial progress to DB before giving up
+            partial_emb = np.array(embeddings_list, dtype=np.float32)
+            _save_to_db(df.iloc[:len(embeddings_list)], partial_emb)
+            raise RuntimeError(f"Embedding failed at batch {i} — {len(embeddings_list):,} saved to DB, reload to resume.")
 
-        # Save partial progress every 50 batches (~5k statements)
-        if (i // batch_size) % 50 == 0 and embeddings_list:
-            flat = [x for row in embeddings_list for x in row]
-            np.save(partial_path, np.array(flat, dtype=np.float32))
+        # Save partial progress to DB every 50 batches (~5k statements)
+        if (i // batch_size) % 50 == 49:
+            partial_emb = np.array(embeddings_list, dtype=np.float32)
+            _save_to_db(df.iloc[:len(embeddings_list)], partial_emb)
 
         pct = min(len(embeddings_list) / n, 1.0)
         progress.progress(pct, text=f"Embedded {len(embeddings_list):,} / {n:,}…")
 
     progress.empty()
-
     emb = np.array(embeddings_list, dtype=np.float32)
 
-    # Save to disk cache
-    np.save(_CACHE_EMB, emb)
-    np.save(_CACHE_IDS, ids)
-    # Clean up partial file
-    if os.path.exists(partial_path):
-        os.remove(partial_path)
+    # Save complete cache to DB
+    with st.spinner("Saving embeddings to database (one-time)…"):
+        _save_to_db(df, emb)
+    st.success("✓ Embeddings saved to database — future loads will be instant.")
 
     st.session_state["corpus_embeddings"]      = emb
     st.session_state["corpus_embedding_count"] = n
