@@ -224,18 +224,30 @@ oai    = get_openai_client(OPENAI_KEY)
 # ── Data loading ──────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300, show_spinner="Loading skill statements from database…")
 def load_statements() -> pd.DataFrame:
-    """Load all skill statements with metadata from the DB."""
+    """Load all skill statements with metadata from the DB.
+    Introspects actual columns first so it never breaks on schema differences."""
+    with engine.connect() as conn:
+        # Find out what columns actually exist
+        actual_cols = pd.read_sql(
+            text("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'rsd_skill_records'
+            """),
+            conn,
+        )["column_name"].tolist()
+
+    # Always-required columns
+    wanted = ["id", "skill_statement", "unit_code", "unit_title", "tp_code", "tp_title"]
+    # Optional — include only if they exist
+    optional = ["qa_status", "element_name", "qa_score", "run_id"]
+    wanted += [c for c in optional if c in actual_cols]
+    # Only select columns that actually exist
+    select_cols = [c for c in wanted if c in actual_cols]
+
     with engine.connect() as conn:
         df = pd.read_sql(
-            text("""
-                SELECT
-                    id,
-                    skill_statement,
-                    unit_code,
-                    unit_title,
-                    tp_code,
-                    tp_title,
-                    qa_status
+            text(f"""
+                SELECT {', '.join(select_cols)}
                 FROM rsd_skill_records
                 WHERE skill_statement IS NOT NULL
                   AND skill_statement <> ''
