@@ -307,32 +307,9 @@ def update_rsd_records(engine) -> int:
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
-def load_excel(input_path: str) -> pd.DataFrame:
-    """
-    Load Excel from a local path or GCS URI (gs://bucket/file.xlsx).
-    GCS download requires the google-cloud-storage package or falls back
-    to gcloud CLI if the library is not installed.
-    """
-    if input_path.startswith("gs://"):
-        import tempfile, subprocess
-        log.info(f"Downloading from GCS: {input_path}")
-        tmp = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False)
-        tmp.close()
-        result = subprocess.run(
-            ["gcloud", "storage", "cp", input_path, tmp.name],
-            capture_output=True, text=True
-        )
-        if result.returncode != 0:
-            sys.exit(f"❌  Failed to download from GCS:\n{result.stderr}")
-        log.info(f"Downloaded to {tmp.name}")
-        return pd.read_excel(tmp.name)
-    else:
-        return pd.read_excel(input_path)
-
-
 def main(input_path: str) -> None:
     log.info(f"Loading: {input_path}")
-    df = load_excel(input_path)
+    df = pd.read_excel(input_path)
     log.info(f"  {len(df):,} rows, {len(df.columns)} columns")
 
     # Sanity check
