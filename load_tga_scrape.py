@@ -64,12 +64,13 @@ def ensure_tables(engine):
             )
         """))
 
+        conn.execute(text("DROP TABLE IF EXISTS uoc_qual_memberships CASCADE"))
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS uoc_qual_memberships (
                 id              BIGSERIAL PRIMARY KEY,
                 unit_code       TEXT NOT NULL,
                 qual_code       TEXT NOT NULL,
-                membership_type TEXT NOT NULL,   -- 'core' or 'elective'
+                membership_type TEXT NOT NULL,
                 is_native       BOOLEAN DEFAULT TRUE,
                 created_at      TIMESTAMPTZ DEFAULT NOW(),
                 UNIQUE (unit_code, qual_code, membership_type)
