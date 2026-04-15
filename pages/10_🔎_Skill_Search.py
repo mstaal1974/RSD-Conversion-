@@ -303,28 +303,67 @@ def score_label(score: float) -> str:
 
 
 # ── Build / retrieve corpus embeddings ───────────────────────────────────────
+# Disk cache paths — survive session resets, persist as long as container runs
+_CACHE_EMB  = "/tmp/skill_search_embeddings.npy"
+_CACHE_IDS  = "/tmp/skill_search_ids.npy"
+
+
+def _cache_is_valid(n_expected: int) -> bool:
+    """Check if the on-disk cache exists and matches the current row count."""
+    if not (os.path.exists(_CACHE_EMB) and os.path.exists(_CACHE_IDS)):
+        return False
+    ids = np.load(_CACHE_IDS)
+    return len(ids) == n_expected
+
+
 def get_corpus_embeddings(df: pd.DataFrame) -> np.ndarray:
     """
-    Return embeddings for the full corpus, cached in session_state.
-    Uses small batches with rate-limit protection and exponential backoff.
+    Return embeddings for the full corpus.
+    Cache hierarchy (fastest → slowest):
+      1. session_state  — instant, lost on browser refresh
+      2. /tmp files     — fast load, survives session resets, lost on container restart
+      3. OpenAI API     — slow first build, saved to both caches above
     """
     import time
-    cache_key = "corpus_embeddings"
-    count_key = "corpus_embedding_count"
-    cached_n  = st.session_state.get(count_key, 0)
+    n = len(df)
 
-    if cache_key in st.session_state and cached_n == len(df):
-        return st.session_state[cache_key]
+    # ── Level 1: session_state ────────────────────────────────────────────────
+    if "corpus_embeddings" in st.session_state and st.session_state.get("corpus_embedding_count") == n:
+        return st.session_state["corpus_embeddings"]
 
+    # ── Level 2: disk cache ───────────────────────────────────────────────────
+    if _cache_is_valid(n):
+        st.info("Loading embeddings from disk cache…")
+        emb = np.load(_CACHE_EMB)
+        st.session_state["corpus_embeddings"]      = emb
+        st.session_state["corpus_embedding_count"] = n
+        return emb
+
+    # ── Level 3: build from API ───────────────────────────────────────────────
     texts      = df["skill_statement"].tolist()
-    n          = len(texts)
+    ids        = df.index.to_numpy()
     batch_size = 100
     n_batches  = (n + batch_size - 1) // batch_size
 
-    progress = st.progress(0, text=f"Building embeddings for {n:,} statements ({n_batches} batches)…")
-    embeddings_list = []
+    # Resume from partial disk save if it exists
+    partial_path = "/tmp/skill_search_partial.npy"
+    if os.path.exists(partial_path):
+        partial = np.load(partial_path).tolist()
+        start_i = len(partial) // 1536 * batch_size   # approx resume point
+        # safer: count completed rows
+        start_i = (len(partial) // 1536) * batch_size
+        embeddings_list = [partial[j*1536:(j+1)*1536] for j in range(len(partial)//1536)]
+        st.info(f"Resuming from batch {start_i // batch_size} ({len(embeddings_list):,} statements already done)…")
+    else:
+        embeddings_list = []
+        start_i = 0
 
-    for i in range(0, n, batch_size):
+    progress = st.progress(
+        len(embeddings_list) / n,
+        text=f"Building embeddings — {len(embeddings_list):,} / {n:,} done…"
+    )
+
+    for i in range(start_i, n, batch_size):
         batch = [t.strip() or "empty" for t in texts[i : i + batch_size]]
         for attempt in range(5):
             try:
@@ -334,17 +373,35 @@ def get_corpus_embeddings(df: pd.DataFrame) -> np.ndarray:
                 break
             except Exception as e:
                 wait = 2 ** attempt
+                st.warning(f"Batch {i//batch_size+1}/{n_batches} failed ({e}), retrying in {wait}s…")
                 time.sleep(wait)
         else:
-            raise RuntimeError(f"Embedding failed after 5 attempts at batch {i}")
+            # Save partial progress before raising so we can resume
+            flat = [x for row in embeddings_list for x in row]
+            np.save(partial_path, np.array(flat, dtype=np.float32))
+            raise RuntimeError(f"Embedding failed at batch {i} — partial progress saved, reload to resume.")
 
-        pct = min((i + batch_size) / n, 1.0)
-        progress.progress(pct, text=f"Embedded {min(i+batch_size, n):,} / {n:,}…")
+        # Save partial progress every 50 batches (~5k statements)
+        if (i // batch_size) % 50 == 0 and embeddings_list:
+            flat = [x for row in embeddings_list for x in row]
+            np.save(partial_path, np.array(flat, dtype=np.float32))
+
+        pct = min(len(embeddings_list) / n, 1.0)
+        progress.progress(pct, text=f"Embedded {len(embeddings_list):,} / {n:,}…")
 
     progress.empty()
+
     emb = np.array(embeddings_list, dtype=np.float32)
-    st.session_state[cache_key] = emb
-    st.session_state[count_key] = n
+
+    # Save to disk cache
+    np.save(_CACHE_EMB, emb)
+    np.save(_CACHE_IDS, ids)
+    # Clean up partial file
+    if os.path.exists(partial_path):
+        os.remove(partial_path)
+
+    st.session_state["corpus_embeddings"]      = emb
+    st.session_state["corpus_embedding_count"] = n
     return emb
 
 
