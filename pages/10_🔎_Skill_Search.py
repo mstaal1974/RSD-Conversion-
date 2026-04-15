@@ -235,7 +235,6 @@ def load_statements() -> pd.DataFrame:
                     unit_title,
                     tp_code,
                     tp_title,
-                    element_name,
                     qa_status
                 FROM rsd_skill_records
                 WHERE skill_statement IS NOT NULL
@@ -477,7 +476,7 @@ if search_clicked and query.strip():
 
             tp_display  = f"{row.get('tp_code','') or ''} — {row.get('tp_title','') or ''}"
             unit_display = f"{row.get('unit_code','') or ''} {row.get('unit_title','') or ''}"
-            elem_display = row.get("element_name","") or ""
+            elem_display = ""
 
             st.markdown(f"""
             <div class="result-card">
@@ -500,7 +499,6 @@ if search_clicked and query.strip():
                 "Unit Title":       row.get("unit_title",""),
                 "TP Code":          row.get("tp_code",""),
                 "TP Title":         row.get("tp_title",""),
-                "Element":          row.get("element_name",""),
                 "QA Status":        row.get("qa_status",""),
             })
 
