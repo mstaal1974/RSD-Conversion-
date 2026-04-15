@@ -52,6 +52,7 @@ def ensure_tables(engine):
     """Create the required tables if they don't exist."""
     with engine.begin() as conn:
         conn.execute(text("DROP TABLE IF EXISTS qual_taxonomy_links CASCADE"))
+        conn.execute(text("DROP TABLE IF EXISTS uoc_occupation_links CASCADE"))
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS qual_taxonomy_links (
                 id                  BIGSERIAL PRIMARY KEY,
