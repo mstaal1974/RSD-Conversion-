@@ -194,7 +194,7 @@ def fetch_taxonomy_soap(qual_code: str, session) -> dict:
             SOAP_URL,
             data=body.encode("utf-8"),
             headers={
-                "Content-Type": "text/xml",
+                "Content-Type": "text/xml; charset=utf-8",
                 "SOAPAction": SOAP_ACTION,
             },
             timeout=20,
@@ -430,4 +430,3 @@ if __name__ == "__main__":
                         help="Skip SOAP taxonomy fetch (use existing taxonomy in Excel)")
     args = parser.parse_args()
     main(args.input, args.skip_soap)
-
