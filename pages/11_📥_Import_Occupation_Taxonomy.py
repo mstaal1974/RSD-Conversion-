@@ -1,5 +1,5 @@
 """
-pages/11_📥_Import_Occupation_Taxonomy.py
+pages/7_📥_Import_Occupation_Taxonomy.py
 
 Import qualification → occupation taxonomy from Excel into the DB.
 
@@ -87,6 +87,21 @@ def ensure_tables():
         # Add any columns that may be missing on an older version of the table
         "ALTER TABLE qual_taxonomy_links ADD COLUMN IF NOT EXISTS scheme TEXT",
         "ALTER TABLE qual_taxonomy_links ADD COLUMN IF NOT EXISTS value  TEXT",
+        # Add the unique constraint if it doesn't exist yet
+        # (table may have been created before this constraint was defined)
+        """
+        DO $$ BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint
+                WHERE conname = 'qual_taxonomy_links_qual_code_scheme_value_key'
+                  AND conrelid = 'qual_taxonomy_links'::regclass
+            ) THEN
+                ALTER TABLE qual_taxonomy_links
+                ADD CONSTRAINT qual_taxonomy_links_qual_code_scheme_value_key
+                UNIQUE (qual_code, scheme, value);
+            END IF;
+        END $$
+        """,
         # Indexes — safe to re-run
         "CREATE INDEX IF NOT EXISTS idx_qtl_qual_code ON qual_taxonomy_links (qual_code)",
         "CREATE INDEX IF NOT EXISTS idx_qtl_scheme    ON qual_taxonomy_links (scheme)",
@@ -310,8 +325,13 @@ if uploaded:
                     result = conn.execute(
                         text("""
                             INSERT INTO qual_taxonomy_links (qual_code, scheme, value)
-                            VALUES (:qual_code, :scheme, :value)
-                            ON CONFLICT (qual_code, scheme, value) DO NOTHING
+                            SELECT :qual_code, :scheme, :value
+                            WHERE NOT EXISTS (
+                                SELECT 1 FROM qual_taxonomy_links
+                                WHERE qual_code = :qual_code
+                                  AND scheme    = :scheme
+                                  AND value     = :value
+                            )
                         """),
                         lr,
                     )
