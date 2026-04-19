@@ -49,54 +49,133 @@ def get_engine():
 # ── Schema helpers ────────────────────────────────────────────────────────────
 
 def ensure_tables(engine):
-    """Create the required tables if they don't exist."""
-    with engine.begin() as conn:
-        # Tables preserved between runs — upsert handles duplicates
-        conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS qual_taxonomy_links (
-                id                  BIGSERIAL PRIMARY KEY,
-                qual_code           TEXT NOT NULL,
-                qual_title          TEXT,
-                anzsco_identifier   TEXT,
-                industry_sector     TEXT,
-                occupation_titles   TEXT,
-                created_at          TIMESTAMPTZ DEFAULT NOW(),
-                UNIQUE (qual_code)
-            )
-        """))
+    """
+    Create or migrate all taxonomy tables to match linkage_engine.py expectations.
+    Each statement in its own transaction so failures don't poison others.
+    """
+    statements = [
+        # qual_registry — one row per qualification
+        """CREATE TABLE IF NOT EXISTS qual_registry (
+            qual_code   TEXT PRIMARY KEY,
+            qual_title  TEXT,
+            status      TEXT DEFAULT 'Current',
+            updated_at  TIMESTAMPTZ DEFAULT NOW()
+        )""",
 
-        # uoc_qual_memberships preserved between runs
-        conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS uoc_qual_memberships (
-                id              BIGSERIAL PRIMARY KEY,
-                unit_code       TEXT NOT NULL,
-                qual_code       TEXT NOT NULL,
-                membership_type TEXT NOT NULL,
-                is_native       BOOLEAN DEFAULT TRUE,
-                created_at      TIMESTAMPTZ DEFAULT NOW(),
-                UNIQUE (unit_code, qual_code, membership_type)
-            )
-        """))
+        # qual_taxonomy_links — scheme/value rows (many per qual)
+        # Drop old single-column unique constraint if present
+        """DO $$ BEGIN
+            IF EXISTS (
+                SELECT 1 FROM pg_constraint
+                WHERE conname = 'qual_taxonomy_links_qual_code_key'
+                  AND conrelid = 'qual_taxonomy_links'::regclass
+            ) THEN
+                ALTER TABLE qual_taxonomy_links DROP CONSTRAINT qual_taxonomy_links_qual_code_key;
+            END IF;
+        END $$""",
 
-        conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS uoc_occupation_links (
-                id                  BIGSERIAL PRIMARY KEY,
-                uoc_code            TEXT NOT NULL,
-                anzsco_code         TEXT NOT NULL DEFAULT '',
-                anzsco_title        TEXT NOT NULL DEFAULT '',
-                anzsco_major_group  TEXT NOT NULL DEFAULT '',
-                asced_code          TEXT,
-                asced_title         TEXT,
-                industry_sector     TEXT,
-                occupation_titles   TEXT,
-                confidence          NUMERIC(5,3) NOT NULL,
-                mapping_source      TEXT NOT NULL,
-                qual_code           TEXT,
-                is_primary          BOOLEAN DEFAULT FALSE,
-                created_at          TIMESTAMPTZ DEFAULT NOW(),
-                UNIQUE (uoc_code, qual_code, mapping_source)
-            )
-        """))
+        """CREATE TABLE IF NOT EXISTS qual_taxonomy_links (
+            id        BIGSERIAL PRIMARY KEY,
+            qual_code TEXT NOT NULL,
+            scheme    TEXT NOT NULL,
+            value     TEXT NOT NULL,
+            UNIQUE (qual_code, scheme, value)
+        )""",
+
+        "ALTER TABLE qual_taxonomy_links ADD COLUMN IF NOT EXISTS scheme TEXT",
+        "ALTER TABLE qual_taxonomy_links ADD COLUMN IF NOT EXISTS value  TEXT",
+
+        # Add compound unique constraint if missing
+        """DO $$ BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint
+                WHERE conname = 'qual_taxonomy_links_qual_code_scheme_value_key'
+                  AND conrelid = 'qual_taxonomy_links'::regclass
+            ) THEN
+                ALTER TABLE qual_taxonomy_links
+                ADD CONSTRAINT qual_taxonomy_links_qual_code_scheme_value_key
+                UNIQUE (qual_code, scheme, value);
+            END IF;
+        END $$""",
+
+        # uoc_qual_memberships — linkage engine uses uoc_code/is_imported/owner_tp_code
+        """CREATE TABLE IF NOT EXISTS uoc_qual_memberships (
+            id              BIGSERIAL PRIMARY KEY,
+            uoc_code        TEXT NOT NULL,
+            qual_code       TEXT NOT NULL,
+            membership_type TEXT NOT NULL,
+            is_imported     BOOLEAN DEFAULT FALSE,
+            owner_tp_code   TEXT,
+            created_at      TIMESTAMPTZ DEFAULT NOW(),
+            UNIQUE (uoc_code, qual_code, membership_type)
+        )""",
+
+        # Migrate old column names if table existed with wrong schema
+        "ALTER TABLE uoc_qual_memberships RENAME COLUMN unit_code TO uoc_code",
+        "ALTER TABLE uoc_qual_memberships RENAME COLUMN is_native TO is_imported",
+        "ALTER TABLE uoc_qual_memberships ADD COLUMN IF NOT EXISTS owner_tp_code TEXT",
+
+        # uoc_occupation_links — must have valid_to, pipeline_run_id, source_qual_code
+        """CREATE TABLE IF NOT EXISTS uoc_occupation_links (
+            id                  BIGSERIAL PRIMARY KEY,
+            uoc_code            TEXT NOT NULL,
+            anzsco_code         TEXT NOT NULL DEFAULT '',
+            anzsco_title        TEXT NOT NULL DEFAULT '',
+            anzsco_major_group  TEXT NOT NULL DEFAULT '',
+            asced_code          TEXT,
+            asced_title         TEXT,
+            industry_sector     TEXT,
+            occupation_titles   TEXT,
+            confidence          NUMERIC(5,3) NOT NULL,
+            mapping_source      TEXT NOT NULL,
+            source_qual_code    TEXT,
+            source_asc_task_id  TEXT,
+            is_primary          BOOLEAN DEFAULT FALSE,
+            is_imported         BOOLEAN DEFAULT FALSE,
+            owner_tp_code       TEXT,
+            home_tp_title       TEXT,
+            anzsco_uri          TEXT DEFAULT '',
+            vc_context          TEXT DEFAULT 'https://www.w3.org/2018/credentials/v1',
+            vc_type             TEXT DEFAULT 'TaxonomicAlignment',
+            aqf_level           TEXT,
+            skill_level_label   TEXT,
+            valid_from          TIMESTAMPTZ DEFAULT NOW(),
+            valid_to            TIMESTAMPTZ,
+            pipeline_run_id     BIGINT,
+            created_at          TIMESTAMPTZ DEFAULT NOW()
+        )""",
+
+        # Add any columns missing from older versions
+        "ALTER TABLE uoc_occupation_links ADD COLUMN IF NOT EXISTS valid_to TIMESTAMPTZ",
+        "ALTER TABLE uoc_occupation_links ADD COLUMN IF NOT EXISTS valid_from TIMESTAMPTZ DEFAULT NOW()",
+        "ALTER TABLE uoc_occupation_links ADD COLUMN IF NOT EXISTS pipeline_run_id BIGINT",
+        "ALTER TABLE uoc_occupation_links ADD COLUMN IF NOT EXISTS source_qual_code TEXT",
+        "ALTER TABLE uoc_occupation_links ADD COLUMN IF NOT EXISTS source_asc_task_id TEXT",
+        "ALTER TABLE uoc_occupation_links ADD COLUMN IF NOT EXISTS is_imported BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE uoc_occupation_links ADD COLUMN IF NOT EXISTS owner_tp_code TEXT",
+        "ALTER TABLE uoc_occupation_links ADD COLUMN IF NOT EXISTS home_tp_title TEXT",
+        "ALTER TABLE uoc_occupation_links ADD COLUMN IF NOT EXISTS anzsco_uri TEXT DEFAULT ''",
+        "ALTER TABLE uoc_occupation_links ADD COLUMN IF NOT EXISTS vc_context TEXT",
+        "ALTER TABLE uoc_occupation_links ADD COLUMN IF NOT EXISTS vc_type TEXT",
+        "ALTER TABLE uoc_occupation_links ADD COLUMN IF NOT EXISTS aqf_level TEXT",
+        "ALTER TABLE uoc_occupation_links ADD COLUMN IF NOT EXISTS skill_level_label TEXT",
+
+        # Rename old qual_code column to source_qual_code if needed
+        "ALTER TABLE uoc_occupation_links RENAME COLUMN qual_code TO source_qual_code",
+
+        # Indexes
+        "CREATE INDEX IF NOT EXISTS idx_uol_uoc_code ON uoc_occupation_links (uoc_code)",
+        "CREATE INDEX IF NOT EXISTS idx_uol_valid ON uoc_occupation_links (uoc_code, is_primary, valid_to)",
+        "CREATE INDEX IF NOT EXISTS idx_qtl_qual ON qual_taxonomy_links (qual_code)",
+        "CREATE INDEX IF NOT EXISTS idx_uqm_uoc ON uoc_qual_memberships (uoc_code)",
+    ]
+
+    for sql in statements:
+        try:
+            with engine.begin() as conn:
+                conn.execute(text(sql.strip()))
+        except Exception:
+            pass  # column already exists, constraint already present, etc.
 
         # Index for fast lookups
         conn.execute(text("""
@@ -122,41 +201,36 @@ def parse_unit_codes(raw: str) -> list[str]:
 
 # ── Main loaders ──────────────────────────────────────────────────────────────
 
-def load_qual_taxonomy(engine, df: pd.DataFrame) -> int:
-    """Upsert qualification taxonomy rows."""
-    rows = []
-    for _, row in df.iterrows():
-        qual_code = str(row.get("Qualification Code", "") or "").strip()
-        if not qual_code:
-            continue
-        rows.append({
-            "qual_code":         qual_code,
-            "qual_title":        str(row.get("Qualification Title", "") or ""),
-            "anzsco_identifier": str(row.get("ANZSCO_Identifier", "") or ""),
-            "industry_sector":   str(row.get("Taxonomy_Industry_Sector", "") or ""),
-            "occupation_titles": str(row.get("Taxonomy_Occupation", "") or ""),
-        })
 
-    if not rows:
-        log.warning("No qualification taxonomy rows to insert.")
+<?xml version='1.0' encoding='UTF-8'?><Error><Code>AccessDenied</Code><Message>Access denied.</Message><Details>Anonymous caller does not have storage.objects.list access to the Google Cloud Storage bucket. Permission 'storage.objects.list' denied on resource (or it may not exist).</Details></Error>
         return 0
 
     with engine.begin() as conn:
-        conn.execute(text("""
-            INSERT INTO qual_taxonomy_links
-                (qual_code, qual_title, anzsco_identifier, industry_sector, occupation_titles)
-            VALUES
-                (:qual_code, :qual_title, :anzsco_identifier, :industry_sector, :occupation_titles)
-            ON CONFLICT (qual_code) DO UPDATE SET
-                qual_title        = EXCLUDED.qual_title,
-                anzsco_identifier = EXCLUDED.anzsco_identifier,
-                industry_sector   = EXCLUDED.industry_sector,
-                occupation_titles = EXCLUDED.occupation_titles,
-                created_at        = NOW()
-        """), rows)
+        for qr in qual_rows:
+            conn.execute(text("""
+                INSERT INTO qual_registry (qual_code, qual_title, status, updated_at)
+                VALUES (:qual_code, :qual_title, 'Current', NOW())
+                ON CONFLICT (qual_code) DO UPDATE
+                SET qual_title = EXCLUDED.qual_title, updated_at = NOW()
+            """), qr)
 
-    log.info(f"  ✓  qual_taxonomy_links: {len(rows):,} rows upserted.")
-    return len(rows)
+    inserted = 0
+    with engine.begin() as conn:
+        for lr in link_rows:
+            result = conn.execute(text("""
+                INSERT INTO qual_taxonomy_links (qual_code, scheme, value)
+                SELECT :qual_code, :scheme, :value
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM qual_taxonomy_links
+                    WHERE qual_code = :qual_code
+                      AND scheme    = :scheme
+                      AND value     = :value
+                )
+            """), lr)
+            inserted += result.rowcount
+
+    log.info(f"  qual_registry: {len(qual_rows):,} quals | qual_taxonomy_links: {inserted:,} new rows")
+    return inserted
 
 
 def load_memberships(engine, df: pd.DataFrame) -> int:
@@ -169,18 +243,18 @@ def load_memberships(engine, df: pd.DataFrame) -> int:
 
         for unit_code in parse_unit_codes(row.get("Core_Unit_Codes", "")):
             rows.append({
-                "unit_code":       unit_code,
+                "uoc_code":        unit_code,
                 "qual_code":       qual_code,
                 "membership_type": "core",
-                "is_native":       True,
+                "is_imported":     False,
             })
 
         for unit_code in parse_unit_codes(row.get("Elective_Unit_Codes", "")):
             rows.append({
-                "unit_code":       unit_code,
+                "uoc_code":        unit_code,
                 "qual_code":       qual_code,
                 "membership_type": "elective",
-                "is_native":       True,
+                "is_imported":     False,
             })
 
     if not rows:
@@ -196,10 +270,10 @@ def load_memberships(engine, df: pd.DataFrame) -> int:
             batch = rows[i : i + BATCH]
             conn.execute(text("""
                 INSERT INTO uoc_qual_memberships
-                    (unit_code, qual_code, membership_type, is_native)
+                    (uoc_code, qual_code, membership_type, is_imported)
                 VALUES
-                    (:unit_code, :qual_code, :membership_type, :is_native)
-                ON CONFLICT (unit_code, qual_code, membership_type) DO NOTHING
+                    (:uoc_code, :qual_code, :membership_type, :is_imported)
+                ON CONFLICT (uoc_code, qual_code, membership_type) DO NOTHING
             """), batch)
             total += len(batch)
 
