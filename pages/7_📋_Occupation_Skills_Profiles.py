@@ -80,7 +80,7 @@ def load_profiles(min_conf: float) -> pd.DataFrame:
             JOIN rsd_skill_records s
                 ON s.unit_code = o.uoc_code
             WHERE o.is_primary = TRUE
-              AND o.valid_to IS NULL
+              
               AND o.confidence >= :minc
               AND o.anzsco_code IS NOT NULL
               AND o.anzsco_code != ''
@@ -282,7 +282,7 @@ with tab3:
                 FROM uoc_occupation_links o
                 JOIN rsd_skill_records s ON s.unit_code = o.uoc_code
                 WHERE o.is_primary = TRUE
-                  AND o.valid_to IS NULL
+                  
                   AND o.confidence >= :mc
                   AND o.anzsco_code IS NOT NULL
                   AND o.anzsco_code != ''
