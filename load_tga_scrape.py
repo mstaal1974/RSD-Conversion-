@@ -51,8 +51,7 @@ def get_engine():
 def ensure_tables(engine):
     """Create the required tables if they don't exist."""
     with engine.begin() as conn:
-        conn.execute(text("DROP TABLE IF EXISTS qual_taxonomy_links CASCADE"))
-        conn.execute(text("DROP TABLE IF EXISTS uoc_occupation_links CASCADE"))
+        # Tables preserved between runs — upsert handles duplicates
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS qual_taxonomy_links (
                 id                  BIGSERIAL PRIMARY KEY,
@@ -66,7 +65,7 @@ def ensure_tables(engine):
             )
         """))
 
-        conn.execute(text("DROP TABLE IF EXISTS uoc_qual_memberships CASCADE"))
+        # uoc_qual_memberships preserved between runs
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS uoc_qual_memberships (
                 id              BIGSERIAL PRIMARY KEY,
