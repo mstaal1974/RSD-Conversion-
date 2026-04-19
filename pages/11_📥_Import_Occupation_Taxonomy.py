@@ -87,8 +87,21 @@ def ensure_tables():
         # Add any columns that may be missing on an older version of the table
         "ALTER TABLE qual_taxonomy_links ADD COLUMN IF NOT EXISTS scheme TEXT",
         "ALTER TABLE qual_taxonomy_links ADD COLUMN IF NOT EXISTS value  TEXT",
-        # Add the unique constraint if it doesn't exist yet
-        # (table may have been created before this constraint was defined)
+        # Drop the wrong single-column unique constraint if it exists
+        # (old schema had UNIQUE(qual_code) which blocks multiple rows per qual)
+        """
+        DO $$ BEGIN
+            IF EXISTS (
+                SELECT 1 FROM pg_constraint
+                WHERE conname = 'qual_taxonomy_links_qual_code_key'
+                  AND conrelid = 'qual_taxonomy_links'::regclass
+            ) THEN
+                ALTER TABLE qual_taxonomy_links
+                DROP CONSTRAINT qual_taxonomy_links_qual_code_key;
+            END IF;
+        END $$
+        """,
+        # Add the correct compound unique constraint if not already present
         """
         DO $$ BEGIN
             IF NOT EXISTS (
