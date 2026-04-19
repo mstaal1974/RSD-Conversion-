@@ -1,5 +1,5 @@
 """
-pages/7_📥_Import_Occupation_Taxonomy.py
+pages/11_📥_Import_Occupation_Taxonomy.py
 
 Import qualification → occupation taxonomy from Excel into the DB.
 
@@ -55,33 +55,48 @@ engine = get_engine(DB_URL)
 
 
 def ensure_tables():
-    """Create qual_registry and qual_taxonomy_links if they don't exist."""
-    with engine.begin() as conn:
-        conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS qual_registry (
-                qual_code   TEXT PRIMARY KEY,
-                qual_title  TEXT,
-                status      TEXT DEFAULT 'Current',
-                updated_at  TIMESTAMP DEFAULT NOW()
-            )
-        """))
-        conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS qual_taxonomy_links (
-                id        SERIAL PRIMARY KEY,
-                qual_code TEXT NOT NULL REFERENCES qual_registry(qual_code) ON DELETE CASCADE,
-                scheme    TEXT NOT NULL,
-                value     TEXT NOT NULL,
-                UNIQUE (qual_code, scheme, value)
-            )
-        """))
-        conn.execute(text("""
-            CREATE INDEX IF NOT EXISTS idx_qtl_qual_code
-            ON qual_taxonomy_links (qual_code)
-        """))
-        conn.execute(text("""
-            CREATE INDEX IF NOT EXISTS idx_qtl_scheme
-            ON qual_taxonomy_links (scheme)
-        """))
+    """
+    Create or migrate qual_registry and qual_taxonomy_links.
+    Each statement runs in its OWN transaction so a failure on one
+    (e.g. table already exists with a different schema) cannot poison
+    the others.
+    """
+    ddl_statements = [
+        # Create qual_registry if missing
+        """
+        CREATE TABLE IF NOT EXISTS qual_registry (
+            qual_code   TEXT PRIMARY KEY,
+            qual_title  TEXT,
+            status      TEXT DEFAULT 'Current',
+            updated_at  TIMESTAMP DEFAULT NOW()
+        )
+        """,
+        # Add updated_at if table existed without it
+        "ALTER TABLE qual_registry ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()",
+        # Create qual_taxonomy_links — no FK constraint so it works even if
+        # qual_registry was just created in this same boot
+        """
+        CREATE TABLE IF NOT EXISTS qual_taxonomy_links (
+            id        SERIAL PRIMARY KEY,
+            qual_code TEXT NOT NULL,
+            scheme    TEXT NOT NULL,
+            value     TEXT NOT NULL,
+            UNIQUE (qual_code, scheme, value)
+        )
+        """,
+        # Add any columns that may be missing on an older version of the table
+        "ALTER TABLE qual_taxonomy_links ADD COLUMN IF NOT EXISTS scheme TEXT",
+        "ALTER TABLE qual_taxonomy_links ADD COLUMN IF NOT EXISTS value  TEXT",
+        # Indexes — safe to re-run
+        "CREATE INDEX IF NOT EXISTS idx_qtl_qual_code ON qual_taxonomy_links (qual_code)",
+        "CREATE INDEX IF NOT EXISTS idx_qtl_scheme    ON qual_taxonomy_links (scheme)",
+    ]
+    for sql in ddl_statements:
+        try:
+            with engine.begin() as conn:
+                conn.execute(text(sql.strip()))
+        except Exception:
+            pass  # already exists or column already present — safe to ignore
 
 
 ensure_tables()
