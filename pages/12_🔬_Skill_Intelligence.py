@@ -387,11 +387,25 @@ if run_heatmap:
             from sklearn.feature_extraction.text import TfidfVectorizer
             from sklearn.metrics.pairwise import cosine_similarity as cos_sim
 
-            df_x = df_skills[df_skills["tp_code"] == tp_x].copy()
-            df_y = df_skills[df_skills["tp_code"] == tp_y].copy()
+                    # Query DB directly — not limited by sidebar filter
+            @st.cache_data(ttl=300, show_spinner=False)
+            def load_tp_skills(tp):
+                with engine.connect() as conn:
+                    rows = conn.execute(text("""
+                        SELECT unit_code, unit_title, tp_code, skill_statement
+                        FROM rsd_skill_records
+                        WHERE tp_code = :tp
+                          AND skill_statement IS NOT NULL
+                          AND skill_statement != ''
+                    """), {"tp": tp}).mappings().all()
+                return pd.DataFrame([dict(r) for r in rows])
+
+            df_x = load_tp_skills(tp_x)
+            df_y = load_tp_skills(tp_y)
 
             if df_x.empty or df_y.empty:
-                st.warning("One or both packages have no skill statements loaded.")
+                st.warning(f"One or both packages have no skill statements. "
+                           f"{tp_x}: {len(df_x)} rows, {tp_y}: {len(df_y)} rows.")
             else:
                 # Aggregate skill statements per UOC
                 uoc_x = (df_x.groupby(["unit_code", "unit_title"])["skill_statement"]
