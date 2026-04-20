@@ -20,6 +20,10 @@ Three advanced analytical views:
               3. Action verb frequency (Bloom's taxonomy level)
               4. Occupation breadth (number of distinct occupations)
 """
+import os as _os
+_os.environ.setdefault("NUMBA_CACHE_DIR", "/tmp/numba_cache")
+_os.environ.setdefault("NUMBA_DISABLE_JIT", "0")
+
 from __future__ import annotations
 import os
 import re

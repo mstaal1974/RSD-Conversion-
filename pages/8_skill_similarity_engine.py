@@ -155,7 +155,7 @@ def compute_everything(statements: list[str], n_clust: int, thresh: float,
     n_out = min(ndims, embeddings.shape[0]-1, embeddings.shape[1]-1)
     if method == "UMAP":
         try:
-            import umap
+            import umap.umap_ as umap
             reducer = umap.UMAP(n_components=n_out, random_state=42,
                                 n_neighbors=min(15, len(statements)-1))
             coords = reducer.fit_transform(embeddings)
