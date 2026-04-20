@@ -210,7 +210,9 @@ with tabs[0]:
                 if i < j and sub_sim[i, j] >= min_sim:
                     G.add_edge(ci, cj, weight=float(sub_sim[i, j]))
 
-        pos = nx.spring_layout(G, k=2.5/np.sqrt(max(len(sub_codes), 1)),
+        # 3D spring layout
+        pos = nx.spring_layout(G, dim=3,
+                               k=2.5/np.sqrt(max(len(sub_codes), 1)),
                                seed=42, iterations=80,
                                weight="weight")
 
@@ -227,20 +229,20 @@ with tabs[0]:
 
         fig_net = go.Figure()
 
-        # Edges
+        # 3D Edges
         for u, v, d in G.edges(data=True):
-            x0, y0 = pos[u]
-            x1, y1 = pos[v]
+            x0, y0, z0 = pos[u]
+            x1, y1, z1 = pos[v]
             w = d["weight"]
-            fig_net.add_trace(go.Scatter(
-                x=[x0, x1, None], y=[y0, y1, None],
+            fig_net.add_trace(go.Scatter3d(
+                x=[x0, x1, None], y=[y0, y1, None], z=[z0, z1, None],
                 mode="lines",
-                line=dict(width=max(0.5, w * 6),
-                          color=f"rgba(126,184,247,{min(w * 1.5, 0.55):.2f})"),
+                line=dict(width=max(1, w * 5),
+                          color=f"rgba(126,184,247,{min(w * 1.5, 0.45):.2f})"),
                 hoverinfo="none", showlegend=False,
             ))
 
-        # Nodes by major group
+        # 3D Nodes — spheres by major group
         for major, color in major_colors.items():
             nodes = [c for c in sub_codes
                      if G.nodes[c].get("major") == major and c in pos]
@@ -249,40 +251,58 @@ with tabs[0]:
             node_meta = sub_meta[sub_meta["anzsco_code"].isin(nodes)]
             sizes = []
             hover = []
+            labels = []
             for c in nodes:
                 m = node_meta[node_meta["anzsco_code"] == c]
                 sc = int(m["skill_count"].values[0]) if len(m) else 10
-                sizes.append(min(6 + sc / 6, 35))
+                sizes.append(min(8 + sc / 5, 40))
                 hover.append(
                     f"<b>{occ_label.get(c, c)}</b><br>"
                     f"ANZSCO: {c}<br>"
                     f"Skills: {sc}<br>"
                     f"Connections: {G.degree(c)}"
                 )
-            fig_net.add_trace(go.Scatter(
+                labels.append(occ_label.get(c, c)[:24])
+            fig_net.add_trace(go.Scatter3d(
                 x=[pos[c][0] for c in nodes],
                 y=[pos[c][1] for c in nodes],
+                z=[pos[c][2] for c in nodes],
                 mode="markers+text",
                 name=major,
-                marker=dict(size=sizes, color=color, opacity=0.85,
-                            line=dict(width=0.8, color="#0a1628")),
-                text=[occ_label.get(c, c)[:22] for c in nodes],
+                marker=dict(
+                    size=sizes,
+                    color=color,
+                    opacity=0.88,
+                    symbol="circle",
+                    line=dict(width=0.5, color="#0a1628"),
+                    # Lighting gives sphere depth effect
+                ),
+                text=labels,
                 textposition="top center",
-                textfont=dict(size=8, color="#cfd8dc"),
-                hovertext=hover, hoverinfo="text",
+                textfont=dict(size=7, color="#cfd8dc"),
+                hovertext=hover,
+                hoverinfo="text",
             ))
 
+        axis_style = dict(
+            showgrid=False, zeroline=False, showticklabels=False,
+            showbackground=False, showspikes=False,
+        )
         fig_net.update_layout(
-            height=620, showlegend=True,
+            height=700, showlegend=True,
             paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="#080e1a",
             font_color="#7eb8f7",
             legend=dict(x=1.01, y=1, bgcolor="rgba(10,22,40,0.85)",
                         bordercolor="#1a2a4a", font_size=10),
-            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-            margin=dict(l=20, r=220, t=50, b=20),
-            title=f"Semantic Skill Network — {len(sub_codes)} occupations, "
+            scene=dict(
+                xaxis=axis_style,
+                yaxis=axis_style,
+                zaxis=axis_style,
+                bgcolor="#080e1a",
+                camera=dict(eye=dict(x=1.4, y=1.4, z=0.8)),
+            ),
+            margin=dict(l=0, r=220, t=50, b=0),
+            title=f"3D Semantic Skill Network — {len(sub_codes)} occupations, "
                   f"{G.number_of_edges()} connections (sim ≥ {min_sim})",
         )
         st.plotly_chart(fig_net, use_container_width=True)
