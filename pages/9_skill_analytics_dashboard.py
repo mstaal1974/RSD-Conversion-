@@ -540,6 +540,79 @@ with centre_col:
                         hoverinfo="none",
                     ))
 
+        # ── Convex hull envelopes per domain ──────────────────────────────
+        try:
+            from scipy.spatial import ConvexHull
+
+            # Colour per domain — matches domain classifier
+            hull_colors = {
+                "Lab/Science":  (126, 184, 247),   # blue
+                "Business":     (239, 159,  39),   # amber
+                "Mining/RII":   (165, 214, 167),   # green
+                "IT/Digital":   (206, 147, 216),   # purple
+                "Health/Care":  (248, 187, 208),   # pink
+                "Construction": (255, 204, 128),   # orange
+                "Agriculture":  (128, 222, 234),   # cyan
+                "General":      (120, 120, 120),   # grey
+            }
+
+            for domain, rgb in hull_colors.items():
+                d_sub = df_plot[df_plot["domain"] == domain]
+                if len(d_sub) < 6:
+                    continue
+                pts = d_sub[["domain_num", "complexity", "sem_z"]].values.astype(float)
+                # Add tiny jitter so coplanar points don't crash ConvexHull
+                pts += np.random.default_rng(42).uniform(-1e-4, 1e-4, pts.shape)
+                try:
+                    hull = ConvexHull(pts)
+                except Exception:
+                    continue
+
+                r, g, b = rgb
+                opacity = 0.10 if (sel_cl == "All" or
+                    df_plot[df_plot["domain"] == domain]["cluster_label"]
+                    .eq(sel_cl).any()) else 0.03
+
+                fig3d.add_trace(go.Mesh3d(
+                    x=pts[:, 0],
+                    y=pts[:, 1],
+                    z=pts[:, 2],
+                    i=hull.simplices[:, 0],
+                    j=hull.simplices[:, 1],
+                    k=hull.simplices[:, 2],
+                    opacity=opacity,
+                    color=f"rgb({r},{g},{b})",
+                    name=domain,
+                    showlegend=False,
+                    hoverinfo="none",
+                    flatshading=True,
+                    lighting=dict(ambient=0.9, diffuse=0.1,
+                                  specular=0.0, roughness=1.0),
+                ))
+                # Wireframe outline on hull edges for definition
+                edge_x, edge_y, edge_z = [], [], []
+                seen = set()
+                for simplex in hull.simplices:
+                    for a, b_idx in [(0,1),(1,2),(0,2)]:
+                        edge = tuple(sorted([simplex[a], simplex[b_idx]]))
+                        if edge in seen:
+                            continue
+                        seen.add(edge)
+                        p1, p2 = pts[edge[0]], pts[edge[1]]
+                        edge_x += [p1[0], p2[0], None]
+                        edge_y += [p1[1], p2[1], None]
+                        edge_z += [p1[2], p2[2], None]
+                fig3d.add_trace(go.Scatter3d(
+                    x=edge_x, y=edge_y, z=edge_z,
+                    mode="lines",
+                    showlegend=False,
+                    line=dict(color=f"rgba({r},{g},{b},{0.22 if opacity > 0.05 else 0.05})",
+                              width=1),
+                    hoverinfo="none",
+                ))
+        except ImportError:
+            pass  # scipy not available
+
         fig3d.update_layout(
             scene=dict(
                 xaxis=dict(
