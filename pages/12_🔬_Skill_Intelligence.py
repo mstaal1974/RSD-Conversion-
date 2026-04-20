@@ -207,6 +207,11 @@ if run_umap or "umap_df" in st.session_state:
                 X_norm = normalize(X)
 
                 # UMAP
+                import os as _os
+                _os.environ["NUMBA_CACHE_DIR"] = "/tmp/numba_cache"
+                _os.environ["NUMBA_DISABLE_JIT"] = "0"
+                import numba
+                numba.config.CACHE_DIR = "/tmp/numba_cache"
                 import umap as umap_lib
                 n_comp = umap_dims
 
