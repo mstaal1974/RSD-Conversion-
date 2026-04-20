@@ -428,78 +428,161 @@ with centre_col:
         }
         colors = df_plot["verb_group"].map(verb_colors).fillna("#546e7a")
 
-        # Build 3D scatter with one trace per verb group
+        # ── Cluster highlight: read right-panel selector ──────────────────
+        sel_cl = st.session_state.get("clust_sel", "All")
+
         fig3d = go.Figure()
+
+        z_floor = float(df_plot["sem_z"].min()) - 0.05
+        y_wall  = float(df_plot["complexity"].min()) - 0.3
+
+        domain_ticks  = list(range(len(domain_order)))
+        domain_labels = [d.split("/")[0] for d in domain_order]
+
         for vg, vc in verb_colors.items():
             sub = df_plot[df_plot["verb_group"] == vg]
-            if sub.empty: continue
-            fig3d.add_trace(go.Scatter3d(
-                x=sub["domain_num"],
-                y=sub["complexity"],
-                z=sub["sem_z"],
-                mode="markers",
-                name=vg,
-                marker=dict(
-                    size=sizes[sub.index].values,
-                    color=vc,
-                    opacity=0.75,
-                    line=dict(width=0.3, color="#0a1628"),
-                ),
-                text=[
+            if sub.empty:
+                continue
+
+            # Split into highlighted vs dimmed
+            if sel_cl != "All":
+                in_cl  = sub[sub["cluster_label"] == sel_cl]
+                out_cl = sub[sub["cluster_label"] != sel_cl]
+            else:
+                in_cl  = sub
+                out_cl = sub.iloc[0:0]
+
+            for grp, is_highlighted in [(in_cl, True), (out_cl, False)]:
+                if grp.empty:
+                    continue
+
+                g_sizes        = sizes[grp.index].values
+                g_opacity_halo = 0.15 if is_highlighted else 0.03
+                g_opacity_core = 0.65 if is_highlighted else 0.08
+                g_color        = vc if is_highlighted else "#1a2a4a"
+
+                # Parse hex colour for RGBA drop lines
+                try:
+                    r_int = int(vc[1:3], 16)
+                    g_int = int(vc[3:5], 16)
+                    b_int = int(vc[5:7], 16)
+                    rgba_faint = f"rgba({r_int},{g_int},{b_int},0.10)"
+                except Exception:
+                    rgba_faint = "rgba(126,184,247,0.10)"
+
+                hover_text = [
                     f"<b>{r['unit_code']}</b><br>"
                     f"{r['element_title']}<br>"
-                    f"{r['skill_statement'][:80]}…<br>"
-                    f"Domain: {r['domain']} | Complexity: {r['complexity']}<br>"
+                    f"<i>{r['skill_statement'][:90]}…</i><br>"
+                    f"Domain: {r['domain']} · Complexity: {r['complexity']}<br>"
                     f"Cluster: {r['cluster_label']}"
-                    for _, r in sub.iterrows()
-                ],
-                hoverinfo="text",
-            ))
+                    for _, r in grp.iterrows()
+                ]
 
-        # Domain tick labels on X
-        domain_ticks = list(range(len(domain_order)))
-        domain_labels = [d.split("/")[0] for d in domain_order]
+                # ── Glow halo (large, very transparent) ───────────────────
+                fig3d.add_trace(go.Scatter3d(
+                    x=grp["domain_num"], y=grp["complexity"], z=grp["sem_z"],
+                    mode="markers",
+                    name=vg if is_highlighted else "_dim",
+                    showlegend=is_highlighted,
+                    legendgroup=vg,
+                    marker=dict(size=g_sizes * 2.6, color=g_color,
+                                opacity=g_opacity_halo, line=dict(width=0)),
+                    hoverinfo="none",
+                ))
+
+                # ── Core dot ──────────────────────────────────────────────
+                fig3d.add_trace(go.Scatter3d(
+                    x=grp["domain_num"], y=grp["complexity"], z=grp["sem_z"],
+                    mode="markers",
+                    name=vg,
+                    showlegend=False,
+                    legendgroup=vg,
+                    marker=dict(size=g_sizes, color=g_color,
+                                opacity=g_opacity_core,
+                                line=dict(width=0.2, color="rgba(0,0,0,0.25)")),
+                    text=hover_text,
+                    hoverinfo="text",
+                    hovertemplate="%{text}<extra></extra>",
+                ))
+
+                if is_highlighted:
+                    # ── Drop lines to Z floor ─────────────────────────────
+                    x_dl, y_dl, z_dl = [], [], []
+                    for _, r in grp.iterrows():
+                        x_dl += [r["domain_num"], r["domain_num"], None]
+                        y_dl += [r["complexity"],  r["complexity"],  None]
+                        z_dl += [r["sem_z"],        z_floor,          None]
+                    fig3d.add_trace(go.Scatter3d(
+                        x=x_dl, y=y_dl, z=z_dl,
+                        mode="lines", showlegend=False, legendgroup=vg,
+                        line=dict(color=rgba_faint, width=1),
+                        hoverinfo="none",
+                    ))
+
+                    # ── Floor shadow ──────────────────────────────────────
+                    fig3d.add_trace(go.Scatter3d(
+                        x=grp["domain_num"], y=grp["complexity"],
+                        z=[z_floor] * len(grp),
+                        mode="markers", showlegend=False, legendgroup=vg,
+                        marker=dict(size=g_sizes * 0.85, color=g_color,
+                                    opacity=0.15, line=dict(width=0)),
+                        hoverinfo="none",
+                    ))
+
+                    # ── Back-wall shadow (onto Y-min plane) ───────────────
+                    fig3d.add_trace(go.Scatter3d(
+                        x=grp["domain_num"], y=[y_wall] * len(grp),
+                        z=grp["sem_z"],
+                        mode="markers", showlegend=False, legendgroup=vg,
+                        marker=dict(size=g_sizes * 0.65, color=g_color,
+                                    opacity=0.10, line=dict(width=0)),
+                        hoverinfo="none",
+                    ))
 
         fig3d.update_layout(
             scene=dict(
                 xaxis=dict(
                     title="Domain Context (X)",
-                    tickvals=domain_ticks,
-                    ticktext=domain_labels,
-                    gridcolor="#1a2a4a",
-                    backgroundcolor="#080e1a",
-                    linecolor="#1a2a4a",
-                    zerolinecolor="#1a2a4a",
+                    tickvals=domain_ticks, ticktext=domain_labels,
+                    gridcolor="#0c1a2e", backgroundcolor="#060c18",
+                    linecolor="#152238", zerolinecolor="#152238",
+                    tickfont=dict(size=9, color="#4a6fa5"),
                 ),
                 yaxis=dict(
                     title="Complexity Level (Y)",
-                    gridcolor="#1a2a4a",
-                    backgroundcolor="#080e1a",
-                    linecolor="#1a2a4a",
-                    range=[1, 10],
+                    gridcolor="#0c1a2e", backgroundcolor="#060c18",
+                    linecolor="#152238", range=[0.5, 10.5],
+                    tickfont=dict(size=9, color="#4a6fa5"),
                 ),
                 zaxis=dict(
                     title="Semantic Meaning (Z)",
-                    gridcolor="#1a2a4a",
-                    backgroundcolor="#080e1a",
-                    linecolor="#1a2a4a",
+                    gridcolor="#0c1a2e", backgroundcolor="#060c18",
+                    linecolor="#152238",
+                    tickfont=dict(size=9, color="#4a6fa5"),
                 ),
-                bgcolor="#080e1a",
+                bgcolor="#060c18",
+                camera=dict(eye=dict(x=1.5, y=1.2, z=0.9)),
+                aspectmode="manual",
+                aspectratio=dict(x=1.6, y=1.0, z=0.8),
             ),
             paper_bgcolor="rgba(0,0,0,0)",
             font_color="#7eb8f7",
             font_family="IBM Plex Mono",
             legend=dict(
                 x=0.01, y=0.99,
-                bgcolor="rgba(10,22,40,0.8)",
-                bordercolor="#1a2a4a",
-                font_size=11,
+                bgcolor="rgba(6,12,24,0.88)",
+                bordercolor="#1a2a4a", font_size=10,
+                itemsizing="constant", tracegroupgap=2,
             ),
             margin=dict(l=0, r=0, t=30, b=0),
-            height=560,
+            height=620,
             title=dict(
-                text=f"Overall Similarity Code: {sel_uoc if sel_uoc != 'All UOCs' else sel_tp}",
-                font_size=12, x=0.5,
+                text=(f"Cluster: <b>{sel_cl}</b>"
+                      if sel_cl != "All"
+                      else f"All clusters · "
+                           f"{sel_uoc if sel_uoc != 'All UOCs' else sel_tp}"),
+                font_size=11, x=0.5, font_color="#4a6fa5",
             ),
         )
         st.plotly_chart(fig3d, use_container_width=True)
