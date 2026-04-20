@@ -153,8 +153,8 @@ all_tps = load_tp_codes()
 with st.sidebar:
     st.header("Global filters")
     sel_tps = st.multiselect("Training packages", all_tps,
-                             default=all_tps[:6] if len(all_tps) >= 6 else all_tps,
-                             help="Applies to all three views")
+                             default=all_tps,
+                             help="Applies to View A and C. View B queries DB directly.")
     max_stmts = st.slider("Max skill statements to load", 500, 10000, 3000, 500)
     st.divider()
     st.caption("Each view has its own additional controls below the chart.")
