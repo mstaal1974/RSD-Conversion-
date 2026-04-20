@@ -28,3 +28,6 @@ rich>=13.0,<14.0
 # TGA SOAP web services
 zeep>=4.2,<5.0
 google-cloud-storage
+umap-learn
+umap-learn
+umap-learn
