@@ -34,3 +34,4 @@ umap-learn
 umap-learn
 umap-learn
 umap-learn
+scipy
