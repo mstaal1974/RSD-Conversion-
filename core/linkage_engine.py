@@ -220,7 +220,7 @@ class LinkageEngine:
                         aqf_level, skill_level_label,
                         is_imported, owner_tp_code, home_tp_title
                     ) VALUES (
-                        :uc, :ac, :at, :amg,
+                        :uoc_code, :ac, :at, :amg,
                         :asced_c, :asced_t, :ind, :occ_t,
                         :conf, :src, :sq, :ast,
                         FALSE, :rid,
