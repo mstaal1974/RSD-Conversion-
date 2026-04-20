@@ -209,12 +209,17 @@ if run_umap or "umap_df" in st.session_state:
                 # UMAP
                 import umap as umap_lib
                 n_comp = umap_dims
-                reducer = umap_lib.UMAP(n_components=n_comp, n_neighbors=15,
-                                        min_dist=0.1, random_state=42,
-                                        metric="cosine")
-                embedding = reducer.fit_transform(X_norm.toarray()
-                                                  if hasattr(X_norm, "toarray")
-                                                  else X_norm)
+
+                # Wrap in plain function — st.cache_data can't serialise
+                # Numba JIT functions used internally by UMAP
+                def _run_umap(X, n_components):
+                    r = umap_lib.UMAP(n_components=n_components,
+                                      n_neighbors=15, min_dist=0.1,
+                                      random_state=42, metric="cosine")
+                    arr = X.toarray() if hasattr(X, "toarray") else X
+                    return r.fit_transform(arr)
+
+                embedding = _run_umap(X_norm, n_comp)
 
                 # KMeans clusters
                 km = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
