@@ -126,7 +126,7 @@ def create_run(
                 VALUES
                     (:id, :session_token, :source_filename, :source_fingerprint,
                      :extractor_name, :extractor_version, :sil_version,
-                     :model, :provider, :settings::jsonb, 'created')
+                     :model, :provider, CAST(:settings AS jsonb), 'created')
             """),
             dict(
                 id=run_id,
