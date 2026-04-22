@@ -170,7 +170,48 @@ if df_skills.empty:
     st.stop()
 
 df_occ = load_occ_links()
+from scipy.spatial import ConvexHull
+import plotly.graph_objects as go
 
+def add_cluster_hulls(fig, df, x_col, y_col, z_col, cluster_col,
+                     label_col=None, opacity=0.12, min_points=4):
+    """Wrap each cluster in a translucent 3D mesh + centroid label."""
+    import plotly.express as px
+    clusters = df[cluster_col].dropna().unique()
+    palette = px.colors.qualitative.Bold
+    added = 0
+    for i, c in enumerate(clusters):
+        sub = df[df[cluster_col] == c]
+        pts = sub[[x_col, y_col, z_col]].to_numpy()
+        if len(pts) < min_points:
+            continue
+        colour = palette[i % len(palette)]
+        try:
+            hull = ConvexHull(pts)
+            fig.add_trace(go.Mesh3d(
+                x=pts[:,0], y=pts[:,1], z=pts[:,2],
+                i=hull.simplices[:,0],
+                j=hull.simplices[:,1],
+                k=hull.simplices[:,2],
+                color=colour, opacity=opacity,
+                hoverinfo="skip", showlegend=False,
+                flatshading=True, name=f"hull_{c}",
+            ))
+            added += 1
+        except Exception as e:
+            print(f"Hull failed for cluster {c}: {e}")
+        cx, cy, cz = pts.mean(axis=0)
+        label = sub[label_col].iloc[0] if label_col and label_col in sub.columns else f"Cluster {c}"
+        fig.add_trace(go.Scatter3d(
+            x=[cx], y=[cy], z=[cz],
+            mode="text",
+            text=[f"<b>{label}</b>"],
+            textfont=dict(size=13, color="white"),
+            hoverinfo="skip", showlegend=False,
+        ))
+    print(f"[hulls] Added {added} hulls across {len(clusters)} clusters")
+    return fig
+                       
 # ═══════════════════════════════════════════════════════════════════════════════
 # VIEW A — UMAP SEMANTIC CLUSTER MAP
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -288,6 +329,7 @@ if run_umap or "umap_df" in st.session_state:
                 color_discrete_sequence=px.colors.qualitative.Bold,
             )
             fig_umap.update_traces(marker=dict(size=3))
+            fig_umap = add_cluster_hulls(fig_umap, umap_df, "x", "y", "z", "cluster", opacity=0.12)  # ← NEW
         else:
             fig_umap = px.scatter(
                 umap_df, x="x", y="y",
