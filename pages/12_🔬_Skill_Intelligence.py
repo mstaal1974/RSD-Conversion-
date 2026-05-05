@@ -7,6 +7,7 @@ Three advanced analytical views:
             Each dot = one skill statement, coloured by Training Package.
             "Colour bleeding" reveals cross-package skill overlap.
             Click a cluster to see its centroid and name a micro-credential.
+            NEW: cross-TP overlap detection with gold halos + drill-in table.
 
   View B — Cross-Package Similarity Heatmap (RPL Engine)
             X axis = UOCs from one TP, Y axis = UOCs from another.
@@ -211,7 +212,56 @@ def add_cluster_hulls(fig, df, x_col, y_col, z_col, cluster_col,
         ))
     print(f"[hulls] Added {added} hulls across {len(clusters)} clusters")
     return fig
-                       
+
+
+def add_overlap_markers(fig, df, overlap_df, is_3d):
+    """Draw gold halos around clusters that bridge multiple training packages.
+
+    In 3D mode: translucent gold spheres at cluster centroid (visible from any angle).
+    In 2D mode: gold circles + labels via add_shape / add_annotation.
+    """
+    if overlap_df.empty:
+        return fig
+    for _, row in overlap_df.iterrows():
+        cl = row["cluster"]
+        sub = df[df["cluster"] == cl]
+        if sub.empty:
+            continue
+        cx, cy = float(sub["x"].mean()), float(sub["y"].mean())
+        rxy = np.linalg.norm(
+            sub[["x", "y"]].to_numpy() - np.array([cx, cy]), axis=1
+        ).max()
+        rxy = max(float(rxy), 0.1) * 1.15  # 15% padding so the halo encloses cleanly
+
+        if is_3d:
+            cz = float(sub["z"].mean())
+            r3d = rxy
+            u = np.linspace(0, 2 * np.pi, 24)
+            v = np.linspace(0, np.pi, 14)
+            xs = cx + r3d * np.outer(np.cos(u), np.sin(v))
+            ys = cy + r3d * np.outer(np.sin(u), np.sin(v))
+            zs = cz + r3d * np.outer(np.ones_like(u), np.cos(v))
+            fig.add_trace(go.Surface(
+                x=xs, y=ys, z=zs,
+                opacity=0.12, showscale=False,
+                colorscale=[[0, "gold"], [1, "gold"]],
+                name=f"⚡ Cluster {cl} — {row['n_tps']} TPs ({', '.join(row['tps'])})",
+                hoverinfo="name", showlegend=True,
+            ))
+        else:
+            fig.add_shape(
+                type="circle", xref="x", yref="y",
+                x0=cx - rxy, y0=cy - rxy, x1=cx + rxy, y1=cy + rxy,
+                line=dict(color="gold", width=2),
+                fillcolor="rgba(255,215,0,0.08)",
+            )
+            fig.add_annotation(
+                x=cx, y=cy + rxy * 1.05,
+                text=f"⚡ Cluster {cl} · {row['n_tps']} TPs",
+                showarrow=False, font=dict(color="gold", size=11),
+            )
+    return fig
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # VIEW A — UMAP SEMANTIC CLUSTER MAP
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -317,6 +367,30 @@ if run_umap or "umap_df" in st.session_state:
         color_col  = "tp_code" if colour_by == "Training Package" else "cluster"
         hover_data = ["unit_code", "element_title", "skill_statement", "cluster"]
 
+        # ── Cross-TP overlap detection ───────────────────────────────────────
+        # A cluster "bridges" training packages if statements from 2+ TPs sit in it.
+        overlap_stats = (
+            umap_df.groupby("cluster")
+                   .agg(n_tps=("tp_code", "nunique"),
+                        n_stmts=("unit_code", "count"),
+                        tps=("tp_code", lambda s: sorted(set(s))))
+                   .reset_index()
+        )
+        with st.expander("⚙ Cross-TP overlap detection", expanded=False):
+            c1, c2 = st.columns(2)
+            min_tps = c1.slider(
+                "Minimum distinct TPs in a cluster",
+                2, max(2, int(overlap_stats["n_tps"].max())), 2,
+                key="a_min_tps",
+            )
+            min_per_tp = c2.slider(
+                "Minimum statements per TP",
+                1, 20, 3, key="a_min_per_tp",
+            )
+        overlap_clusters = overlap_stats.query(
+            "n_tps >= @min_tps and n_stmts >= @min_tps * @min_per_tp"
+        ).copy()
+
         if stored_dims == 3 and "z" in umap_df.columns:
             fig_umap = px.scatter_3d(
                 umap_df, x="x", y="y", z="z",
@@ -329,7 +403,7 @@ if run_umap or "umap_df" in st.session_state:
                 color_discrete_sequence=px.colors.qualitative.Bold,
             )
             fig_umap.update_traces(marker=dict(size=3))
-            fig_umap = add_cluster_hulls(fig_umap, umap_df, "x", "y", "z", "cluster", opacity=0.12)  # ← NEW
+            fig_umap = add_cluster_hulls(fig_umap, umap_df, "x", "y", "z", "cluster", opacity=0.12)
         else:
             fig_umap = px.scatter(
                 umap_df, x="x", y="y",
@@ -342,6 +416,12 @@ if run_umap or "umap_df" in st.session_state:
             )
             fig_umap.update_traces(marker=dict(size=5))
 
+        # Highlight cross-TP overlap clusters with gold halos
+        add_overlap_markers(
+            fig_umap, umap_df, overlap_clusters,
+            is_3d=(stored_dims == 3 and "z" in umap_df.columns),
+        )
+
         fig_umap.update_layout(
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="#080e1a",
@@ -350,6 +430,48 @@ if run_umap or "umap_df" in st.session_state:
                         font_size=10),
         )
         st.plotly_chart(fig_umap, use_container_width=True)
+
+        # ── Cross-TP overlap drill-down ──────────────────────────────────────
+        if not overlap_clusters.empty:
+            st.markdown(
+                f"**🟡 {len(overlap_clusters)} cross-TP overlap cluster(s) detected.** "
+                "Pick one to inspect the shared skill statements."
+            )
+            pick = st.selectbox(
+                "Inspect overlap cluster",
+                options=overlap_clusters["cluster"].tolist(),
+                format_func=lambda c: (
+                    f"Cluster {c}  ·  "
+                    f"{overlap_clusters.loc[overlap_clusters['cluster']==c,'n_tps'].iloc[0]} TPs  ·  "
+                    f"{overlap_clusters.loc[overlap_clusters['cluster']==c,'n_stmts'].iloc[0]} statements  ·  "
+                    f"{', '.join(overlap_clusters.loc[overlap_clusters['cluster']==c,'tps'].iloc[0])}"
+                ),
+                key="a_overlap_pick",
+            )
+            sub = umap_df[umap_df["cluster"] == pick].sort_values("tp_code")
+            st.markdown(
+                f"### Skill statements in Cluster {pick} "
+                f"({sub['tp_code'].nunique()} TPs · {len(sub)} statements)"
+            )
+            st.dataframe(
+                sub[["tp_code", "unit_code", "unit_title",
+                     "element_title", "skill_statement"]],
+                use_container_width=True, hide_index=True,
+            )
+            st.download_button(
+                f"⬇ Download Cluster {pick} statements CSV",
+                sub[["tp_code", "unit_code", "unit_title",
+                     "element_title", "skill_statement"]]
+                .to_csv(index=False).encode(),
+                f"overlap_cluster_{pick}.csv", "text/csv",
+                key=f"a_overlap_dl_{pick}",
+            )
+        else:
+            st.info(
+                "No cross-TP overlap clusters at the current thresholds. "
+                "Open the ⚙ panel above and lower 'minimum distinct TPs' "
+                "or 'minimum statements per TP' to see more."
+            )
 
         # ── Centroid explorer ─────────────────────────────────────────────────
         st.markdown("**Cluster centroids — top defining terms per cluster**")
