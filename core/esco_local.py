@@ -87,6 +87,7 @@ class ESCOLocalMatcher:
         self.embeddings: np.ndarray | None = None  # (n_skills, dim) L2-normalized
         self._model = None  # lazy SentenceTransformer
         self._occ_by_skill: dict[str, list[dict]] = {}
+        self._occ_meta: dict[str, dict] = {}
 
     # ───────────────────────────────────────────────────────────────────
     # Loading / indexing
@@ -167,11 +168,31 @@ class ESCOLocalMatcher:
                 for _, r in group.iterrows()
             ]
 
+        # Load occupations metadata (URI → ISCO group) — optional; needed by
+        # the ANZSCO crosswalk pipeline.
+        occ_meta: dict[str, dict] = {}
+        occ_csv = self.data_dir / "occupations_en.csv"
+        if occ_csv.exists():
+            occ_df = pd.read_csv(occ_csv, low_memory=False)
+            for _, r in occ_df.iterrows():
+                uri = str(r.get("conceptUri", "") or "")
+                if uri:
+                    occ_meta[uri] = {
+                        "title":      str(r.get("preferredLabel", "") or ""),
+                        "isco_group": str(r.get("iscoGroup", "") or "").strip(),
+                        "code":       str(r.get("code", "") or ""),
+                    }
+
         self.skills_df = skills
         self.relations_df = relations
         self.embeddings = embeddings
         self._occ_by_skill = occ_by_skill
+        self._occ_meta = occ_meta
         return self
+
+    def occupation_meta(self, occupation_uri: str) -> dict | None:
+        """Return {title, isco_group, code} for an ESCO occupation URI, if loaded."""
+        return self._occ_meta.get(occupation_uri)
 
     # ───────────────────────────────────────────────────────────────────
     # Querying
