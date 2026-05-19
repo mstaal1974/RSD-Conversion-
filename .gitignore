@@ -4,8 +4,10 @@ __pycache__/
 .venv/
 .streamlit/secrets.toml
 
-# ESCO offline dataset and built index — too large for git.
-# Download from https://esco.ec.europa.eu/en/use-esco/download and unzip into data/esco/
+# ESCO offline dataset — bundle only the two files the matcher needs;
+# the rest of the v1.2.1 release stays out of git.
 data/esco/*.csv
+!data/esco/skills_en.csv
+!data/esco/occupationSkillRelations_en.csv
 data/esco/index.joblib
 data/esco/embeddings_*.npz
