@@ -29,6 +29,8 @@ import streamlit as st
 from dotenv import load_dotenv
 from sqlalchemy import text
 
+from core import esco_local
+
 load_dotenv()
 st.set_page_config(page_title="ESCO Alignment", layout="wide")
 
@@ -277,10 +279,36 @@ def match_statement(
 
 with st.sidebar:
     st.header("Matching settings")
+
+    local_available = esco_local.is_available()
+    mode_options = ["Local (MiniLM embeddings)", "ESCO REST API"]
+    mode_default = 0 if local_available else 1
+    mode = st.radio(
+        "Match source",
+        mode_options,
+        index=mode_default,
+        help=(
+            "**Local** uses `sentence-transformers/all-MiniLM-L6-v2` embeddings over the "
+            "ESCO v1.2.1 CSV release — true semantic matching, no rate limits, English only. "
+            "**API** uses ec.europa.eu/esco/api (slow, supports all languages)."
+        ),
+    )
+    use_local = mode.startswith("Local")
+    if use_local and not local_available:
+        st.warning(
+            "ESCO CSVs not found in `data/esco/`. See `data/esco/README.md` "
+            "for the download link. Falling back to API mode."
+        )
+        use_local = False
+
     top_n_skills = st.slider("Top N ESCO skills", 1, 10, 3)
     top_n_occ = st.slider("Max occupations per skill", 3, 20, 8)
     min_score = st.slider("Min match score", 0.0, 1.0, 0.0, 0.05)
-    language = st.selectbox("ESCO language", ["en", "de", "fr", "es", "it", "nl", "pl", "pt"])
+    if use_local:
+        language = "en"
+        st.caption("Local mode is English only.")
+    else:
+        language = st.selectbox("ESCO language", ["en", "de", "fr", "es", "it", "nl", "pl", "pt"])
 
     st.divider()
     st.header("Filter source data")
@@ -374,9 +402,20 @@ if run_all or run_one:
         n_todo = len(df_todo)
         n_batches = max(1, (n_todo + int(batch_size) - 1) // int(batch_size))
 
+        # Load the local index once up front (cached after first build)
+        local_matcher = None
+        if use_local:
+            with st.spinner("Loading local ESCO index…"):
+                try:
+                    local_matcher = esco_local.get_matcher()
+                except FileNotFoundError as e:
+                    st.error(str(e))
+                    st.stop()
+
         st.info(
             f"Processing **{n_todo}** remaining statements in **{n_batches}** batch(es) "
-            f"of {batch_size}. Progress is saved after each batch."
+            f"of {batch_size} using **{'local index' if use_local else 'ESCO API'}**. "
+            "Progress is saved after each batch."
         )
 
         overall_bar = st.progress(0, text="Starting…")
@@ -398,40 +437,70 @@ if run_all or run_one:
             batch_records: list[dict] = []
             batch_errors: list[str] = []
 
-            for i, (_, row) in enumerate(df_batch.iterrows()):
-                stmt = str(row.get("skill_statement", "") or "").strip()
+            empty_result = dict(
+                top_skill_uri="",
+                top_skill_title="",
+                top_skill_score=0.0,
+                all_occupation_titles="",
+                all_occupation_uris="",
+            )
 
+            statements = [
+                str(r.get("skill_statement", "") or "").strip()
+                for _, r in df_batch.iterrows()
+            ]
+
+            if use_local and local_matcher is not None:
+                # Vectorised batch — whole batch scored in ~tens of ms.
                 try:
-                    result = match_statement(
-                        stmt,
+                    results = local_matcher.batch_match(
+                        statements,
                         top_n_skills=top_n_skills,
                         top_n_occupations=top_n_occ,
                         min_score=min_score,
-                        language=language,
                     )
                 except Exception as e:
-                    batch_errors.append(f"Row {row.get('id')}: {e}")
-                    result = dict(
-                        top_skill_uri="",
-                        top_skill_title="",
-                        top_skill_score=0.0,
-                        all_occupation_titles="",
-                        all_occupation_uris="",
-                    )
+                    batch_errors.append(f"Local batch failed: {e}")
+                    results = [empty_result.copy() for _ in statements]
 
-                batch_records.append(
-                    {
+                for i, (row_tuple, result) in enumerate(zip(df_batch.iterrows(), results)):
+                    _, row = row_tuple
+                    batch_records.append({
                         "id": row["id"],
                         "uri": result["top_skill_uri"],
                         "title": result["top_skill_title"],
                         "score": result["top_skill_score"],
                         "occ_t": result["all_occupation_titles"],
                         "occ_u": result["all_occupation_uris"],
-                    }
-                )
+                    })
+                batch_bar.progress(1.0, text=f"{len(df_batch)}/{len(df_batch)} in this batch")
+            else:
+                # API mode — serial, one HTTP round-trip per row.
+                for i, (_, row) in enumerate(df_batch.iterrows()):
+                    stmt = statements[i]
+                    try:
+                        result = match_statement(
+                            stmt,
+                            top_n_skills=top_n_skills,
+                            top_n_occupations=top_n_occ,
+                            min_score=min_score,
+                            language=language,
+                        )
+                    except Exception as e:
+                        batch_errors.append(f"Row {row.get('id')}: {e}")
+                        result = empty_result.copy()
 
-                pct = (i + 1) / len(df_batch)
-                batch_bar.progress(pct, text=f"{i + 1}/{len(df_batch)} in this batch")
+                    batch_records.append({
+                        "id": row["id"],
+                        "uri": result["top_skill_uri"],
+                        "title": result["top_skill_title"],
+                        "score": result["top_skill_score"],
+                        "occ_t": result["all_occupation_titles"],
+                        "occ_u": result["all_occupation_uris"],
+                    })
+
+                    pct = (i + 1) / len(df_batch)
+                    batch_bar.progress(pct, text=f"{i + 1}/{len(df_batch)} in this batch")
 
             # ── Save batch to DB immediately ───────────────────────────────
             try:
