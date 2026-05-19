@@ -281,15 +281,15 @@ with st.sidebar:
     st.header("Matching settings")
 
     local_available = esco_local.is_available()
-    mode_options = ["Local (offline TF-IDF)", "ESCO REST API"]
+    mode_options = ["Local (MiniLM embeddings)", "ESCO REST API"]
     mode_default = 0 if local_available else 1
     mode = st.radio(
         "Match source",
         mode_options,
         index=mode_default,
         help=(
-            "**Local** uses an offline TF-IDF index over the ESCO v1.2.1 CSV release "
-            "(~1000× faster, no rate limits, English only). "
+            "**Local** uses `sentence-transformers/all-MiniLM-L6-v2` embeddings over the "
+            "ESCO v1.2.1 CSV release — true semantic matching, no rate limits, English only. "
             "**API** uses ec.europa.eu/esco/api (slow, supports all languages)."
         ),
     )

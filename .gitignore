@@ -8,3 +8,4 @@ __pycache__/
 # Download from https://esco.ec.europa.eu/en/use-esco/download and unzip into data/esco/
 data/esco/*.csv
 data/esco/index.joblib
+data/esco/embeddings_*.npz

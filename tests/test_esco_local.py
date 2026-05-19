@@ -17,7 +17,12 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.fixture(scope="module")
 def matcher():
-    return esco_local.get_matcher()
+    try:
+        return esco_local.get_matcher()
+    except Exception as e:
+        # Skip cleanly when the sentence-transformer model cannot be loaded
+        # (no network in CI, or HF cache not warmed).
+        pytest.skip(f"Could not load ESCO matcher: {e}")
 
 
 def test_index_loaded(matcher):
