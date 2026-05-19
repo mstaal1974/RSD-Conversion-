@@ -26,10 +26,10 @@ def matcher():
 
 
 def test_index_loaded(matcher):
-    assert matcher.vectorizer is not None
-    assert matcher.matrix is not None
-    assert matcher.matrix.shape[0] > 10_000
-    assert matcher.matrix.shape[0] == len(matcher.skills_df)
+    assert matcher.embeddings is not None
+    assert matcher.embeddings.shape[0] > 10_000
+    assert matcher.embeddings.shape[1] == 384
+    assert matcher.embeddings.shape[0] == len(matcher.skills_df)
 
 
 def test_match_returns_expected_shape(matcher):
