@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.env
+.venv/
+.streamlit/secrets.toml
+
+# ESCO offline dataset and built index — too large for git.
+# Download from https://esco.ec.europa.eu/en/use-esco/download and unzip into data/esco/
+data/esco/*.csv
+data/esco/index.joblib
