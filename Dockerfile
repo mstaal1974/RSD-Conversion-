@@ -8,13 +8,6 @@ COPY requirements.txt .
 RUN pip install --upgrade pip \
  && pip install --no-cache-dir --prefix=/install -r requirements.txt
 
-# Pre-download the ESCO matcher's sentence-transformer model into a shared
-# HF cache so the runtime container never needs to reach huggingface.co.
-ENV HF_HOME=/install/hf_cache
-RUN PYTHONPATH=/install/lib/python3.12/site-packages \
-    python -c "from sentence_transformers import SentenceTransformer; \
-SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')"
-
 
 # ── Runtime stage ─────────────────────────────────────────────────────────────
 FROM python:3.12-slim
@@ -24,10 +17,13 @@ RUN groupadd -r app && useradd -r -g app app
 
 WORKDIR /app
 
-# Copy dependencies from builder (includes pre-warmed HF model cache)
+# Copy dependencies from builder
 COPY --from=builder /install /usr/local
-ENV HF_HOME=/usr/local/hf_cache \
-    TRANSFORMERS_OFFLINE=1 \
+
+# The ESCO matcher loads its sentence-transformer model from
+# data/esco/model/ (bundled in the repo), so we don't need HF access at
+# runtime. These flags make that explicit and prevent accidental fetches.
+ENV TRANSFORMERS_OFFLINE=1 \
     HF_HUB_OFFLINE=1
 
 # Copy application source

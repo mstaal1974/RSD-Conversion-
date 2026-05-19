@@ -35,6 +35,25 @@ def _data_dir() -> Path:
     return Path(os.getenv("ESCO_DATA_DIR", "data/esco")).resolve()
 
 
+def _resolve_model_source() -> str:
+    """
+    Resolve the sentence-transformer model source, in priority order:
+
+      1. $ESCO_MODEL_PATH — explicit local directory
+      2. <ESCO_DATA_DIR>/model/ — bundled local copy (preferred for offline)
+      3. The Hugging Face Hub id (downloads on first use)
+    """
+    override = os.getenv("ESCO_MODEL_PATH", "").strip()
+    if override and Path(override).is_dir():
+        return str(Path(override).resolve())
+
+    bundled = _data_dir() / "model"
+    if bundled.is_dir() and (bundled / "config.json").exists():
+        return str(bundled)
+
+    return MODEL_NAME
+
+
 def _norm(s: str) -> str:
     s = (s or "").strip()
     return re.sub(r"\s+", " ", s)
@@ -60,9 +79,9 @@ class ESCOLocalMatcher:
     Thread-safe for queries after construction.
     """
 
-    def __init__(self, data_dir: Path | None = None, model_name: str = MODEL_NAME):
+    def __init__(self, data_dir: Path | None = None, model_name: str | None = None):
         self.data_dir = Path(data_dir) if data_dir else _data_dir()
-        self.model_name = model_name
+        self.model_name = model_name or _resolve_model_source()
         self.skills_df: pd.DataFrame = pd.DataFrame()
         self.relations_df: pd.DataFrame = pd.DataFrame()
         self.embeddings: np.ndarray | None = None  # (n_skills, dim) L2-normalized
@@ -74,7 +93,13 @@ class ESCOLocalMatcher:
     # ───────────────────────────────────────────────────────────────────
 
     def _paths(self) -> tuple[Path, Path, Path]:
-        slug = self.model_name.replace("/", "_")
+        # Use a stable slug so the same model loaded from a local path or
+        # from the Hub hits the same cache. Allow override for swapping
+        # to other models in future.
+        if "MiniLM-L6-v2" in self.model_name:
+            slug = "sentence-transformers_all-MiniLM-L6-v2"
+        else:
+            slug = Path(self.model_name).name.replace("/", "_") or "model"
         return (
             self.data_dir / "skills_en.csv",
             self.data_dir / "occupationSkillRelations_en.csv",
