@@ -145,3 +145,132 @@ def qualification_profile(engine: Engine, qual_code: str) -> dict:
     matcher = esco_local.get_matcher()
     df = _statements_for_qual(engine, qual_code)
     return {"qual_code": qual_code, "statements": df, **_aggregate(df, matcher)}
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Cluster-backed profiles (alternative to ESCO-as-backbone)
+# ─────────────────────────────────────────────────────────────────────
+
+def _aggregate_via_clusters(df: pd.DataFrame, nodes: list, labels) -> dict:
+    """
+    Build ANZSCO rollups from concept nodes instead of raw ESCO matches.
+
+    Each node has a modal_isco_group; we route the node (and all its
+    statements) to every ANZSCO that ISCO maps to. The aggregate score
+    for an ANZSCO is Σ over nodes routed to it of
+        (node.size × node.mean_esco_score × crosswalk_weight),
+    deduped so a single node only votes once per ANZSCO target.
+    """
+    if df.empty or not nodes:
+        return {"anzsco_rows": [], "coverage": {"n_statements": 0, "n_with_anzsco": 0}}
+
+    agg: dict[str, dict] = {}
+    n_with_anzsco = 0
+
+    for node in nodes:
+        if node.id == -1:
+            continue  # noise — no taxonomic anchor by design
+        if not node.modal_isco_group:
+            continue
+
+        for anz in anzsco_crosswalk.isco_to_anzsco(node.modal_isco_group):
+            code = anz["anzsco_code"]
+            bucket = agg.setdefault(code, {
+                "anzsco_code": code,
+                "anzsco_title": anz["anzsco_title"],
+                "score": 0.0,
+                "n_statements": 0,
+                "n_nodes": 0,
+                "concept_nodes": [],
+            })
+            vote = float(node.size) * float(node.mean_esco_score) * anz["weight"]
+            bucket["score"] += vote
+            bucket["n_statements"] += node.size
+            bucket["n_nodes"] += 1
+            bucket["concept_nodes"].append({
+                "node_id": node.id,
+                "label": node.label,
+                "canonical_text": node.canonical_text,
+                "size": node.size,
+                "mean_esco_score": round(node.mean_esco_score, 4),
+                "modal_esco_title": node.modal_esco_title,
+                "modal_isco_group": node.modal_isco_group,
+                "member_ids": node.member_ids,
+                "vote": round(vote, 4),
+            })
+        n_with_anzsco += node.size
+
+    # Sort nodes within each bucket by vote (their influence on the ranking)
+    for bucket in agg.values():
+        bucket["concept_nodes"].sort(key=lambda x: x["vote"], reverse=True)
+
+    rows = list(agg.values())
+    rows.sort(key=lambda r: r["score"], reverse=True)
+
+    return {
+        "anzsco_rows": rows,
+        "coverage": {
+            "n_statements": len(df),
+            "n_with_anzsco": min(n_with_anzsco, len(df)),
+            "n_unmapped_nodes": sum(1 for n in nodes if n.id == -1),
+            "n_total_nodes": sum(1 for n in nodes if n.id != -1),
+        },
+    }
+
+
+def _build_nodes_for_scope(df: pd.DataFrame, min_cluster_size: int = 4) -> tuple[list, "np.ndarray"]:
+    """Lazy import to avoid a heavy import at module load if the page never uses clusters."""
+    from core.concept_nodes import build_concept_nodes
+    return build_concept_nodes(df, min_cluster_size=min_cluster_size)
+
+
+def uoc_profile_cluster_backed(
+    engine: Engine,
+    uoc_code: str,
+    *,
+    min_cluster_size: int = 4,
+    corpus_df: pd.DataFrame | None = None,
+) -> dict:
+    """
+    Cluster-backed UOC profile.
+
+    Clustering needs a population — a single UOC's ~15 statements aren't
+    enough. Pass `corpus_df` to cluster over a larger pool (e.g. all
+    statements in the same TP), then filter the result to nodes that
+    contain at least one of this UOC's statements.
+
+    If `corpus_df` is None we cluster only this UOC's statements (mostly
+    useful for testing).
+    """
+    uoc_df = _statements_for_uoc(engine, uoc_code)
+    work_df = corpus_df if corpus_df is not None and not corpus_df.empty else uoc_df
+
+    nodes, _ = _build_nodes_for_scope(work_df, min_cluster_size=min_cluster_size)
+
+    if corpus_df is not None and not corpus_df.empty:
+        # Keep only nodes that contain a statement from this UOC
+        uoc_ids = set(uoc_df["id"].tolist())
+        nodes = [n for n in nodes if uoc_ids.intersection(set(n.member_ids))]
+
+    return {
+        "uoc_code": uoc_code,
+        "statements": uoc_df,
+        "concept_nodes": nodes,
+        **_aggregate_via_clusters(uoc_df, nodes, labels=None),
+    }
+
+
+def qualification_profile_cluster_backed(
+    engine: Engine,
+    qual_code: str,
+    *,
+    min_cluster_size: int = 4,
+) -> dict:
+    df = _statements_for_qual(engine, qual_code)
+    nodes, _ = _build_nodes_for_scope(df, min_cluster_size=min_cluster_size)
+    return {
+        "qual_code": qual_code,
+        "statements": df,
+        "concept_nodes": nodes,
+        **_aggregate_via_clusters(df, nodes, labels=None),
+    }

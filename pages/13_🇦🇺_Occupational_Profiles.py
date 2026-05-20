@@ -108,18 +108,92 @@ with st.sidebar:
         target_uoc = None
 
     st.divider()
+    st.header("Backbone")
+    backbone = st.radio(
+        "Group statements by",
+        ["ESCO concept", "Cluster concept (HDBSCAN + LLM)"],
+        help=(
+            "**ESCO**: each statement is grouped under its top-1 ESCO skill match. "
+            "Clean taxonomic anchor, but only as accurate as the ESCO cosine.\n\n"
+            "**Cluster**: HDBSCAN clusters the statements directly on their MiniLM "
+            "embeddings, then an LLM names each cluster. No mediating taxonomy; "
+            "low-confidence statements show as 'Unmapped' instead of being force-grouped."
+        ),
+    )
+    use_clusters = backbone.startswith("Cluster")
+
+    if use_clusters:
+        min_cluster_size = st.slider("Min cluster size", 2, 20, 4)
+        run_labeler = st.checkbox(
+            "Use LLM to name clusters",
+            value=bool(_secret("OPENAI_API_KEY") or _secret("ANTHROPIC_API_KEY")),
+            help="Falls back to truncated canonical statement when off or no API key.",
+        )
+    else:
+        min_cluster_size = 4
+        run_labeler = False
+
+    st.divider()
     top_n = st.slider("Top N ANZSCO occupations", 5, 50, 15)
     min_score = st.slider("Min aggregate score", 0.0, 5.0, 0.0, 0.1)
 
 
 # ── Build profile ─────────────────────────────────────────────────────────────
 with st.spinner("Building profile…"):
-    if target_uoc:
-        prof = profiles.uoc_profile(engine, target_uoc)
-        scope_label = f"UOC **{target_uoc}**"
+    if use_clusters:
+        if target_uoc:
+            # Cluster over the parent TP so a single UOC has a meaningful population
+            with engine.connect() as conn:
+                tp_corpus = pd.read_sql(
+                    text(
+                        "SELECT id, unit_code, element_title, skill_statement, "
+                        "esco_skill_uri, esco_skill_title, esco_skill_score, "
+                        "esco_occupation_uris, esco_occupation_titles "
+                        "FROM rsd_skill_records "
+                        "WHERE tp_code = (SELECT tp_code FROM rsd_skill_records WHERE unit_code = :uc LIMIT 1) "
+                        "AND esco_skill_uri IS NOT NULL AND esco_skill_uri <> ''"
+                    ),
+                    conn,
+                    params={"uc": target_uoc},
+                )
+            prof = profiles.uoc_profile_cluster_backed(
+                engine, target_uoc,
+                min_cluster_size=min_cluster_size,
+                corpus_df=tp_corpus,
+            )
+            scope_label = f"UOC **{target_uoc}** (clustered within TP)"
+        else:
+            prof = profiles.qualification_profile_cluster_backed(
+                engine, target_qual,
+                min_cluster_size=min_cluster_size,
+            )
+            scope_label = f"Qualification **{target_qual}**"
+
+        if run_labeler and prof.get("concept_nodes"):
+            from core.concept_labeler import label_nodes
+            from core.providers.openai_provider import OpenAIProvider
+            from core.providers.anthropic_provider import AnthropicProvider
+            api = _secret("OPENAI_API_KEY")
+            if api:
+                provider = OpenAIProvider(api_key=api)
+                model = "gpt-4o-mini"
+            else:
+                provider = AnthropicProvider(api_key=_secret("ANTHROPIC_API_KEY"))
+                model = "claude-3-5-haiku-20241022"
+            bar = st.progress(0.0, text="Naming clusters…")
+            calls = label_nodes(
+                prof["concept_nodes"], provider=provider, model=model,
+                progress_callback=lambda pct, msg: bar.progress(pct, text=msg),
+            )
+            bar.empty()
+            st.caption(f"Named {calls} clusters via {provider.name} ({model}).")
     else:
-        prof = profiles.qualification_profile(engine, target_qual)
-        scope_label = f"Qualification **{target_qual}**"
+        if target_uoc:
+            prof = profiles.uoc_profile(engine, target_uoc)
+            scope_label = f"UOC **{target_uoc}**"
+        else:
+            prof = profiles.qualification_profile(engine, target_qual)
+            scope_label = f"Qualification **{target_qual}**"
 
 cov = prof["coverage"]
 anzsco_rows = prof["anzsco_rows"]
@@ -154,23 +228,33 @@ st.bar_chart(chart_df.set_index("label")["score"])
 
 # ── Detail table ──────────────────────────────────────────────────────────────
 st.subheader("Ranked detail")
-display = df_rank[[
-    "anzsco_code", "anzsco_title", "score", "n_statements",
-    "supporting_esco_occupations",
-]].copy()
-display["supporting_esco_occupations"] = display["supporting_esco_occupations"].apply(
-    lambda xs: ", ".join(xs[:6]) + (f" (+{len(xs) - 6})" if len(xs) > 6 else "")
-)
-display = display.rename(columns={
-    "anzsco_code": "ANZSCO",
-    "anzsco_title": "Title",
-    "score": "Score",
-    "n_statements": "Skills",
-    "supporting_esco_occupations": "Top ESCO occupations behind this",
-})
+if use_clusters:
+    display = df_rank[["anzsco_code", "anzsco_title", "score", "n_statements", "n_nodes"]].copy()
+    display["concept_preview"] = df_rank["concept_nodes"].apply(
+        lambda nodes: ", ".join(n["label"] for n in nodes[:5])
+                      + (f" (+{len(nodes) - 5})" if len(nodes) > 5 else "")
+    )
+    display = display.rename(columns={
+        "anzsco_code": "ANZSCO", "anzsco_title": "Title", "score": "Score",
+        "n_statements": "Skills", "n_nodes": "Concepts",
+        "concept_preview": "Top concept clusters",
+    })
+else:
+    display = df_rank[[
+        "anzsco_code", "anzsco_title", "score", "n_statements",
+        "supporting_esco_occupations",
+    ]].copy()
+    display["supporting_esco_occupations"] = display["supporting_esco_occupations"].apply(
+        lambda xs: ", ".join(xs[:6]) + (f" (+{len(xs) - 6})" if len(xs) > 6 else "")
+    )
+    display = display.rename(columns={
+        "anzsco_code": "ANZSCO", "anzsco_title": "Title", "score": "Score",
+        "n_statements": "Skills",
+        "supporting_esco_occupations": "Top ESCO occupations behind this",
+    })
 st.dataframe(display, use_container_width=True, hide_index=True, height=400)
 
-# ── Drill-down: pick an ANZSCO, see the statements driving it ─────────────────
+# ── Drill-down ────────────────────────────────────────────────────────────────
 st.subheader("Evidence")
 chosen = st.selectbox(
     "Inspect which ANZSCO occupation?",
@@ -179,24 +263,65 @@ chosen = st.selectbox(
 chosen_code = chosen.split(" — ")[0]
 chosen_row = next(r for r in filtered if r["anzsco_code"] == chosen_code)
 
-driving_ids = set(chosen_row["supporting_skill_statements"])
-evidence_df = statements_df[statements_df["id"].isin(driving_ids)][[
-    "unit_code", "element_title", "skill_statement",
-    "esco_skill_title", "esco_skill_score",
-]].sort_values("esco_skill_score", ascending=False)
+if use_clusters:
+    st.caption(
+        f"**{chosen_code} — {chosen_row['anzsco_title']}** is supported by "
+        f"**{chosen_row['n_nodes']} concept clusters** spanning "
+        f"**{chosen_row['n_statements']} statements** "
+        f"(aggregate score {chosen_row['score']:.2f})."
+    )
+    for cn in chosen_row["concept_nodes"]:
+        with st.expander(
+            f"🔹 {cn['label']}  ·  {cn['size']} stmts  ·  score {cn['vote']:.2f}",
+            expanded=False,
+        ):
+            st.markdown(
+                f"**Canonical**: {cn['canonical_text']}\n\n"
+                f"**Modal ESCO concept**: {cn['modal_esco_title']}  "
+                f"(ISCO {cn['modal_isco_group']})  ·  mean cosine {cn['mean_esco_score']:.3f}"
+            )
+            member_df = statements_df[statements_df["id"].isin(cn["member_ids"])][[
+                "unit_code", "element_title", "skill_statement",
+                "esco_skill_title", "esco_skill_score",
+            ]]
+            st.dataframe(member_df, use_container_width=True, hide_index=True, height=200)
 
-st.caption(
-    f"{len(evidence_df)} skill statements drive **{chosen_code} — {chosen_row['anzsco_title']}** "
-    f"(aggregate score {chosen_row['score']:.2f})."
-)
-st.dataframe(evidence_df, use_container_width=True, hide_index=True, height=400)
+    # Unmapped bucket — shown separately for honesty
+    unmapped = [n for n in prof.get("concept_nodes", []) if n.id == -1]
+    if unmapped:
+        u = unmapped[0]
+        with st.expander(
+            f"⚠️ Unmapped ({u.size} statements that didn't cluster confidently)",
+            expanded=False,
+        ):
+            unmapped_df = statements_df[statements_df["id"].isin(u.member_ids)][[
+                "unit_code", "element_title", "skill_statement",
+                "esco_skill_title", "esco_skill_score",
+            ]]
+            st.dataframe(unmapped_df, use_container_width=True, hide_index=True, height=200)
+else:
+    driving_ids = set(chosen_row["supporting_skill_statements"])
+    evidence_df = statements_df[statements_df["id"].isin(driving_ids)][[
+        "unit_code", "element_title", "skill_statement",
+        "esco_skill_title", "esco_skill_score",
+    ]].sort_values("esco_skill_score", ascending=False)
+    st.caption(
+        f"{len(evidence_df)} skill statements drive **{chosen_code} — {chosen_row['anzsco_title']}** "
+        f"(aggregate score {chosen_row['score']:.2f})."
+    )
+    st.dataframe(evidence_df, use_container_width=True, hide_index=True, height=400)
 
 
 # ── Downloads ─────────────────────────────────────────────────────────────────
 st.subheader("Download")
 out = df_rank.copy()
-out["supporting_esco_occupations"] = out["supporting_esco_occupations"].apply(lambda xs: " | ".join(xs))
-out["supporting_skill_statements"] = out["supporting_skill_statements"].apply(lambda xs: " | ".join(str(i) for i in xs))
+if use_clusters:
+    out["concept_nodes"] = out["concept_nodes"].apply(
+        lambda nodes: " | ".join(f"{n['label']} (n={n['size']})" for n in nodes)
+    )
+else:
+    out["supporting_esco_occupations"] = out["supporting_esco_occupations"].apply(lambda xs: " | ".join(xs))
+    out["supporting_skill_statements"] = out["supporting_skill_statements"].apply(lambda xs: " | ".join(str(i) for i in xs))
 
 st.download_button(
     "⬇ Profile CSV",
