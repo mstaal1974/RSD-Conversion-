@@ -748,6 +748,107 @@ else:
                     st.session_state["sa_overrides"] = overrides
                     st.success("Override saved ✅")
 
+# ── Cross-TP overlap (Jaccard on cluster membership) ──────────────────────────
+st.markdown('<div class="section-header">Cross-TP overlap</div>', unsafe_allow_html=True)
+st.caption(
+    "Each Training Package's footprint in skill space is the set of clusters its "
+    "statements occupy. Jaccard = |A ∩ B| / |A ∪ B| measures how much two TPs share."
+)
+
+if "tp_code" not in df_ann.columns or df_ann["tp_code"].fillna("").eq("").all():
+    st.info("No tp_code on the loaded statements — cross-TP overlap unavailable.")
+else:
+    tp_series = df_ann["tp_code"].fillna("(unspecified)").astype(str)
+    real_clusters = df_ann["cluster_id"][df_ann["cluster_id"] >= 0]
+
+    # TP → set of cluster_ids it has statements in (excluding noise cluster -1)
+    tp_clusters: dict[str, set[int]] = {}
+    for tp, grp in df_ann.assign(tp=tp_series).groupby("tp"):
+        cids = set(int(c) for c in grp["cluster_id"] if c >= 0)
+        if cids:
+            tp_clusters[str(tp)] = cids
+
+    if len(tp_clusters) < 2:
+        st.info("Fewer than 2 TPs have non-noise clusters — cross-TP overlap unavailable.")
+    else:
+        tps = sorted(tp_clusters.keys())
+        rows = []
+        for i, a in enumerate(tps):
+            for j, b in enumerate(tps):
+                inter = tp_clusters[a] & tp_clusters[b]
+                union = tp_clusters[a] | tp_clusters[b]
+                jaccard = len(inter) / len(union) if union else 0.0
+                rows.append({
+                    "TP A":     a,
+                    "TP B":     b,
+                    "Jaccard":  round(jaccard, 4),
+                    "Shared":   len(inter),
+                    "A only":   len(tp_clusters[a] - tp_clusters[b]),
+                    "B only":   len(tp_clusters[b] - tp_clusters[a]),
+                })
+        tp_df = pd.DataFrame(rows)
+
+        # Heatmap — hide self-overlap diagonal by dimming it
+        tp_df_plot = tp_df.copy()
+        tp_df_plot["Jaccard_display"] = tp_df_plot.apply(
+            lambda r: None if r["TP A"] == r["TP B"] else r["Jaccard"], axis=1
+        )
+        tp_heatmap = alt.Chart(tp_df_plot).mark_rect().encode(
+            x=alt.X("TP B:N", sort=tps, axis=alt.Axis(labelAngle=-45, title="TP →")),
+            y=alt.Y("TP A:N", sort=tps, axis=alt.Axis(title="↑ TP")),
+            color=alt.Color("Jaccard_display:Q",
+                scale=alt.Scale(scheme="magma", domain=[0, 1]),
+                legend=alt.Legend(title="Jaccard")),
+            tooltip=[
+                alt.Tooltip("TP A:N"),
+                alt.Tooltip("TP B:N"),
+                alt.Tooltip("Jaccard:Q", format=".3f"),
+                alt.Tooltip("Shared:Q"),
+                alt.Tooltip("A only:Q"),
+                alt.Tooltip("B only:Q"),
+            ],
+        ).properties(width=600, height=600,
+                     title=f"Cross-TP Jaccard overlap — {len(tps)} TPs")
+        st.altair_chart(tp_heatmap, use_container_width=True)
+
+        # Top-N most overlapping TP pairs
+        pairs = tp_df[tp_df["TP A"] < tp_df["TP B"]].sort_values("Jaccard", ascending=False)
+        st.markdown("**Most overlapping TP pairs**")
+        st.dataframe(pairs.head(20).reset_index(drop=True),
+                     use_container_width=True, hide_index=True)
+
+        # Drill-down to the shared clusters of a chosen pair
+        with st.expander("Inspect shared clusters between two TPs"):
+            colp1, colp2 = st.columns(2)
+            tp_a = colp1.selectbox("TP A", tps, key="cross_tp_a")
+            tp_b = colp2.selectbox(
+                "TP B",
+                [t for t in tps if t != tp_a],
+                key="cross_tp_b",
+            )
+            shared = tp_clusters[tp_a] & tp_clusters[tp_b]
+            if not shared:
+                st.info(f"{tp_a} and {tp_b} share no clusters.")
+            else:
+                st.caption(
+                    f"{tp_a} and {tp_b} share **{len(shared)}** clusters "
+                    f"out of {len(tp_clusters[tp_a] | tp_clusters[tp_b])} total."
+                )
+                drill_rows = []
+                for cid in sorted(shared):
+                    canon = clusters.get(cid, {})
+                    drill_rows.append({
+                        "Cluster":   cid,
+                        "Size":      canon.get("size", "—"),
+                        "Canonical": canon.get("canonical_text", "")[:120],
+                        f"{tp_a} statements": int(((df_ann["cluster_id"] == cid) &
+                                                   (tp_series == tp_a)).sum()),
+                        f"{tp_b} statements": int(((df_ann["cluster_id"] == cid) &
+                                                   (tp_series == tp_b)).sum()),
+                    })
+                drill_df = pd.DataFrame(drill_rows).sort_values("Size", ascending=False)
+                st.dataframe(drill_df, use_container_width=True, hide_index=True)
+
 # ── Near-duplicate pairs ──────────────────────────────────────────────────────
 st.markdown('<div class="section-header">Near-duplicate pairs</div>', unsafe_allow_html=True)
 st.caption(
