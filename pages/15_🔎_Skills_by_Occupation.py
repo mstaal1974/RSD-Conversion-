@@ -7,11 +7,15 @@ ANZSCO → ISCO → ESCO chain.
 """
 from __future__ import annotations
 
+import os
+
 import pandas as pd
 import streamlit as st
+from dotenv import load_dotenv
 
 from core import anzsco_crosswalk, esco_local, profiles
-from core.db import get_engine
+
+load_dotenv()
 
 st.set_page_config(page_title="Skills by Occupation", layout="wide")
 st.title("🔎 Skills by Occupation")
@@ -20,6 +24,26 @@ st.caption(
     "Occupational Profiles chain and lists every matched skill statement "
     "that contributes to it, ranked by contribution score."
 )
+
+# ── Connection ────────────────────────────────────────────────────────────────
+def _secret(k, d=""):
+    try:
+        return st.secrets.get(k, os.getenv(k, d)) or d
+    except Exception:
+        return os.getenv(k, d) or d
+
+
+DB_URL = _secret("DATABASE_URL")
+if not DB_URL:
+    st.error("DATABASE_URL not configured.")
+    st.stop()
+
+
+@st.cache_resource
+def get_engine(url):
+    from sqlalchemy import create_engine
+    return create_engine(url, pool_pre_ping=True)
+
 
 # ── Preconditions ──────────────────────────────────────────────────────────────
 if not esco_local.is_available():
@@ -32,7 +56,7 @@ if not anzsco_crosswalk.is_available():
     )
     st.stop()
 
-engine = get_engine()
+engine = get_engine(DB_URL)
 
 # ── Occupation picker ─────────────────────────────────────────────────────────
 query = st.text_input(

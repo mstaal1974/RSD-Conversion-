@@ -6,14 +6,18 @@ then drill into pairwise gap analysis (A∖B, B∖A, A∩B).
 """
 from __future__ import annotations
 
+import os
+
 import numpy as np
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+from dotenv import load_dotenv
 
 from core import anzsco_crosswalk, esco_local
 from core import occupation_similarity as sim
-from core.db import get_engine
+
+load_dotenv()
 
 st.set_page_config(page_title="Occupation Similarity Map", layout="wide")
 st.title("🗺️ Occupation Similarity Map")
@@ -22,6 +26,27 @@ st.caption(
     "skill embeddings, projected to 2D/3D via UMAP. Nearby points share more skills. "
     "Switch to the Gap analysis tab to compare any pair."
 )
+
+
+# ── Connection ────────────────────────────────────────────────────────────────
+def _secret(k, d=""):
+    try:
+        return st.secrets.get(k, os.getenv(k, d)) or d
+    except Exception:
+        return os.getenv(k, d) or d
+
+
+DB_URL = _secret("DATABASE_URL")
+if not DB_URL:
+    st.error("DATABASE_URL not configured.")
+    st.stop()
+
+
+@st.cache_resource
+def get_engine(url):
+    from sqlalchemy import create_engine
+    return create_engine(url, pool_pre_ping=True)
+
 
 # ── Preconditions ────────────────────────────────────────────────────────────
 if not esco_local.is_available():
@@ -34,7 +59,7 @@ if not anzsco_crosswalk.is_available():
 with st.spinner("Loading ESCO matcher…"):
     esco_local.get_matcher()
 
-engine = get_engine()
+engine = get_engine(DB_URL)
 
 # ── Controls ──────────────────────────────────────────────────────────────────
 with st.sidebar:
