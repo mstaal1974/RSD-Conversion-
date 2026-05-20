@@ -300,6 +300,11 @@ def reduce_dims(matrix: np.ndarray, *, n_components: int = 2,
 
     try:
         import umap
+        if not hasattr(umap, "UMAP"):
+            # Either umap-learn failed to re-export (partial init from a
+            # previous numba error left in sys.modules), or a different
+            # PyPI package named "umap" is shadowing umap-learn.
+            raise ImportError("umap module has no UMAP class")
         reducer = umap.UMAP(
             n_components=n_components,
             metric="cosine",
@@ -308,7 +313,7 @@ def reduce_dims(matrix: np.ndarray, *, n_components: int = 2,
             min_dist=0.1,
         )
         return reducer.fit_transform(matrix).astype(np.float32)
-    except (RuntimeError, ImportError, OSError):
+    except (RuntimeError, ImportError, AttributeError, OSError):
         from sklearn.manifold import TSNE
         n = matrix.shape[0]
         reducer = TSNE(
