@@ -137,6 +137,102 @@ def _aggregate(df: pd.DataFrame, matcher) -> dict:
     }
 
 
+def statements_for_anzsco(engine: Engine, anzsco_code: str) -> dict:
+    """
+    Reverse lookup: given an ANZSCO occupation, return every skill
+    statement in the corpus that contributes to it via the
+    ESCO ← ISCO ← ANZSCO chain.
+
+    Contribution score for a statement is:
+        esco_skill_score × crosswalk_weight
+    using the best (highest-weight) qualifying ESCO occupation behind
+    that statement, mirroring the dedup logic in _aggregate().
+    """
+    if not anzsco_code:
+        return {"anzsco_code": "", "anzsco_title": "", "statements": pd.DataFrame(),
+                "esco_occupations": [], "isco_codes": []}
+
+    title = anzsco_crosswalk.title_for_anzsco(anzsco_code)
+    isco_links = anzsco_crosswalk.anzsco_to_isco(anzsco_code)
+    if not isco_links:
+        return {"anzsco_code": anzsco_code, "anzsco_title": title,
+                "statements": pd.DataFrame(), "esco_occupations": [], "isco_codes": []}
+
+    matcher = esco_local.get_matcher()
+    weights = anzsco_crosswalk.QUALITY_WEIGHT
+
+    # ESCO URI → best (weight, title, isco) across the ISCO mappings
+    uri_weight: dict[str, float] = {}
+    uri_title: dict[str, str] = {}
+    uri_isco: dict[str, str] = {}
+    for link in isco_links:
+        w = weights.get(link["quality"], 0.5)
+        for occ in matcher.occupations_for_isco(link["isco_code"]):
+            uri = occ["uri"]
+            if uri not in uri_weight or w > uri_weight[uri]:
+                uri_weight[uri] = w
+                uri_title[uri] = occ["title"]
+                uri_isco[uri] = link["isco_code"]
+
+    if not uri_weight:
+        return {"anzsco_code": anzsco_code, "anzsco_title": title,
+                "statements": pd.DataFrame(),
+                "esco_occupations": [],
+                "isco_codes": [l["isco_code"] for l in isco_links]}
+
+    uris = list(uri_weight.keys())
+    sql = text("""
+        SELECT id, unit_code, element_title, skill_statement,
+               esco_skill_uri, esco_skill_title, esco_skill_score,
+               esco_occupation_uris
+          FROM rsd_skill_records
+         WHERE esco_skill_uri IS NOT NULL AND esco_skill_uri <> ''
+           AND esco_occupation_uris IS NOT NULL
+           AND string_to_array(esco_occupation_uris, '|') && :uri_array
+    """)
+    with engine.connect() as conn:
+        rows = conn.execute(sql, {"uri_array": uris}).mappings().all()
+
+    out_rows = []
+    for r in rows:
+        stmt_uris = [u.strip() for u in (r.get("esco_occupation_uris") or "").split("|") if u.strip()]
+        best_w, via_uri = 0.0, None
+        for u in stmt_uris:
+            w = uri_weight.get(u, 0.0)
+            if w > best_w:
+                best_w, via_uri = w, u
+        if via_uri is None:
+            continue
+        esco_score = float(r["esco_skill_score"] or 0.0)
+        out_rows.append({
+            "id": r["id"],
+            "unit_code": r["unit_code"],
+            "element_title": r["element_title"],
+            "skill_statement": r["skill_statement"],
+            "esco_skill_title": r["esco_skill_title"],
+            "esco_skill_score": esco_score,
+            "via_esco_title": uri_title.get(via_uri, ""),
+            "via_isco": uri_isco.get(via_uri, ""),
+            "crosswalk_weight": best_w,
+            "contribution_score": round(esco_score * best_w, 4),
+        })
+
+    statements_df = pd.DataFrame(out_rows)
+    if not statements_df.empty:
+        statements_df = statements_df.sort_values("contribution_score", ascending=False).reset_index(drop=True)
+
+    return {
+        "anzsco_code": anzsco_code,
+        "anzsco_title": title,
+        "statements": statements_df,
+        "esco_occupations": [
+            {"uri": u, "title": uri_title[u], "isco_code": uri_isco[u], "weight": uri_weight[u]}
+            for u in uris
+        ],
+        "isco_codes": [l["isco_code"] for l in isco_links],
+    }
+
+
 def uoc_profile(engine: Engine, uoc_code: str) -> dict:
     matcher = esco_local.get_matcher()
     df = _statements_for_uoc(engine, uoc_code)

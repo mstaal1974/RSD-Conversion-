@@ -84,3 +84,37 @@ def anzsco_to_isco(anzsco_code: str) -> list[dict]:
         {"isco_code": row.isco_code, "quality": row.match_quality}
         for row in matches.itertuples(index=False)
     ]
+
+
+def title_for_anzsco(anzsco_code: str) -> str:
+    """Canonical ANZSCO title for a code, or '' if unknown."""
+    code = str(anzsco_code).strip()
+    df = _load()
+    m = df[df["anzsco_code"] == code]
+    return "" if m.empty else str(m.iloc[0]["anzsco_title"])
+
+
+def search_titles(query: str, limit: int = 30) -> list[dict]:
+    """Case-insensitive substring search over ANZSCO titles.
+
+    Returns distinct (code, title) pairs ranked exact > startswith > substring.
+    """
+    q = (query or "").strip().lower()
+    if not q:
+        return []
+    df = _load()
+    titles = df[["anzsco_code", "anzsco_title"]].drop_duplicates()
+    lowered = titles["anzsco_title"].str.lower()
+    mask = lowered.str.contains(q, regex=False, na=False)
+    hits = titles[mask].copy()
+    if hits.empty:
+        return []
+    hits["_t"] = hits["anzsco_title"].str.lower()
+    hits["_rank"] = hits["_t"].apply(
+        lambda t: 0 if t == q else (1 if t.startswith(q) else 2)
+    )
+    hits = hits.sort_values(["_rank", "anzsco_title"]).head(limit)
+    return [
+        {"anzsco_code": r.anzsco_code, "anzsco_title": r.anzsco_title}
+        for r in hits.itertuples(index=False)
+    ]

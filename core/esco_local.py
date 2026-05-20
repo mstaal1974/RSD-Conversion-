@@ -194,6 +194,17 @@ class ESCOLocalMatcher:
         """Return {title, isco_group, code} for an ESCO occupation URI, if loaded."""
         return self._occ_meta.get(occupation_uri)
 
+    def occupations_for_isco(self, isco_group: str) -> list[dict]:
+        """All ESCO occupations under a given ISCO-08 unit group."""
+        code = str(isco_group or "").strip()
+        if not code:
+            return []
+        return [
+            {"uri": uri, "title": meta.get("title", ""), "code": meta.get("code", "")}
+            for uri, meta in self._occ_meta.items()
+            if meta.get("isco_group") == code
+        ]
+
     # ───────────────────────────────────────────────────────────────────
     # Querying
     # ───────────────────────────────────────────────────────────────────
