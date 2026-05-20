@@ -280,18 +280,44 @@ def build_empirical_matrix(
 
 def reduce_dims(matrix: np.ndarray, *, n_components: int = 2,
                 random_state: int = 42) -> np.ndarray:
-    """UMAP projection (cosine metric, since centroids are unit-normed)."""
+    """2D/3D projection. Tries UMAP (cosine metric); falls back to
+    scikit-learn TSNE if UMAP's numba backend can't initialise — common
+    on sandboxed deployments where numba can't locate its source files
+    for cache addressing.
+
+    The input is expected to be L2-normalised so euclidean rank in TSNE
+    matches cosine rank (||a - b||² = 2 - 2·cos(a,b) for unit vectors).
+    """
     if matrix.shape[0] < n_components + 1:
         return np.zeros((matrix.shape[0], n_components), dtype=np.float32)
-    import umap
-    reducer = umap.UMAP(
-        n_components=n_components,
-        metric="cosine",
-        random_state=random_state,
-        n_neighbors=min(15, matrix.shape[0] - 1),
-        min_dist=0.1,
+
+    # Give numba a writable cache dir before UMAP triggers its JIT.
+    import os, tempfile
+    os.environ.setdefault(
+        "NUMBA_CACHE_DIR",
+        os.path.join(tempfile.gettempdir(), "numba_cache"),
     )
-    return reducer.fit_transform(matrix).astype(np.float32)
+
+    try:
+        import umap
+        reducer = umap.UMAP(
+            n_components=n_components,
+            metric="cosine",
+            random_state=random_state,
+            n_neighbors=min(15, matrix.shape[0] - 1),
+            min_dist=0.1,
+        )
+        return reducer.fit_transform(matrix).astype(np.float32)
+    except (RuntimeError, ImportError, OSError):
+        from sklearn.manifold import TSNE
+        n = matrix.shape[0]
+        reducer = TSNE(
+            n_components=n_components,
+            random_state=random_state,
+            init="pca",
+            perplexity=min(30.0, max(5.0, n / 3.0)),
+        )
+        return reducer.fit_transform(matrix).astype(np.float32)
 
 
 # ── Gap analysis ──────────────────────────────────────────────────────────────
