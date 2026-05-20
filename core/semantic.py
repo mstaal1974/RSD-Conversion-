@@ -60,29 +60,46 @@ def cluster_statements(
     embeddings: np.ndarray,
     similarity_threshold: float = 0.85,
     min_cluster_size: int = 2,
+    algorithm: str = "hdbscan",
 ) -> np.ndarray:
     """
-    Cluster skill statements using DBSCAN on cosine distance.
+    Cluster skill statements on cosine distance.
 
-    similarity_threshold: statements with similarity >= this are considered
-                          in the same neighbourhood (0.85 = very similar)
-    Returns array of cluster labels (-1 = noise/singleton)
+    algorithm:
+      "hdbscan" (default) — handles variable density and noise; no eps.
+                            similarity_threshold is ignored.
+      "dbscan"            — legacy; eps = 1 - similarity_threshold.
+
+    Returns array of cluster labels (-1 = noise/singleton).
     """
+    if algorithm == "hdbscan":
+        try:
+            import hdbscan
+        except ImportError:
+            algorithm = "dbscan"  # fall back gracefully if not installed
+
+    if algorithm == "hdbscan":
+        # HDBSCAN with cosine distance directly on the (normalised) embeddings.
+        # For high-dim sparse-ish data we use the precomputed distance matrix
+        # to be exact and match the DBSCAN code path.
+        sim_matrix = cosine_similarity_matrix(embeddings)
+        distance_matrix = np.clip(1.0 - sim_matrix, 0, 2).astype(np.float64)
+        clusterer = hdbscan.HDBSCAN(
+            metric="precomputed",
+            min_cluster_size=max(2, min_cluster_size),
+            cluster_selection_method="eom",
+        )
+        return clusterer.fit_predict(distance_matrix)
+
     from sklearn.cluster import DBSCAN
-
-    # Convert similarity to distance
     sim_matrix = cosine_similarity_matrix(embeddings)
-    distance_matrix = 1.0 - sim_matrix
-    distance_matrix = np.clip(distance_matrix, 0, 2)
-
-    eps = 1.0 - similarity_threshold  # distance threshold
+    distance_matrix = np.clip(1.0 - sim_matrix, 0, 2)
     db = DBSCAN(
-        eps=eps,
+        eps=1.0 - similarity_threshold,
         min_samples=min_cluster_size,
         metric="precomputed",
     )
-    labels = db.fit_predict(distance_matrix)
-    return labels
+    return db.fit_predict(distance_matrix)
 
 
 def find_canonical(
