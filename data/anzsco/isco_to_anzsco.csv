@@ -1,0 +1,110 @@
+isco_code,anzsco_code,anzsco_title,match_quality
+# Starter ISCO-08 ↔ ANZSCO crosswalk for the RSD-Conversion platform.
+# Covers ~60 ISCO unit groups commonly hit by Australian VET training packages.
+# NOT authoritative — see data/anzsco/README.md for the full ABS source.
+# Quality flag: "exact" = 1:1 correspondence, "partial" = approximate.
+#
+# Managers (ANZSCO 1xxx)
+1120,1111,Chief Executives and Managing Directors,partial
+1213,1322,Policy and Planning Managers,exact
+1221,1311,Advertising and Sales Managers,partial
+1321,1335,Production Managers,partial
+1330,1331,Construction Managers,exact
+1411,1411,Cafe and Restaurant Managers,partial
+1420,1421,Retail Managers,exact
+#
+# Professionals (ANZSCO 2xxx)
+2120,2241,"Actuaries, Mathematicians and Statisticians",exact
+2142,2332,Civil Engineering Professionals,exact
+2144,2335,"Industrial, Mechanical and Production Engineers",exact
+2151,2333,Electrical Engineers,exact
+2153,2633,Telecommunications Engineering Professionals,exact
+2166,2324,"Graphic and Web Designers, and Illustrators",partial
+2211,2531,General Practitioners and Resident Medical Officers,partial
+2221,2544,Registered Nurses,exact
+2261,2521,Dental Practitioners,exact
+2310,2421,University Lecturers and Tutors,exact
+2320,2422,Vocational Education Teachers,exact
+2330,2414,Secondary School Teachers,exact
+2341,2412,Primary School Teachers,exact
+2342,2411,Early Childhood (Pre-primary School) Teachers,exact
+2411,2211,Accountants,exact
+2421,2247,Management and Organisation Analysts,exact
+2431,2251,Advertising and Marketing Professionals,exact
+2511,2611,ICT Business and Systems Analysts,exact
+2512,2613,Software and Applications Programmers,exact
+2514,2613,Software and Applications Programmers,exact
+2521,2621,"Database and Systems Administrators, and ICT Security Specialists",exact
+2522,2621,"Database and Systems Administrators, and ICT Security Specialists",exact
+2611,2713,Solicitors,partial
+#
+# Technicians and Trades Workers (ANZSCO 3xxx) — core AU VET territory
+3115,3125,Mechanical Engineering Draftspersons and Technicians,exact
+3132,3132,ICT Support Technicians,exact
+3211,3411,Electricians,exact
+3214,3423,Electronic Equipment Trades Workers,partial
+3251,4232,Dental Assistants,partial
+3322,2252,ICT Sales Professionals,partial
+3411,2247,Management and Organisation Analysts,partial
+7112,3311,Bricklayers and Stonemasons,exact
+7114,8211,Concreters,exact
+7115,3312,Carpenters and Joiners,exact
+7119,3319,Other Construction Trades Workers,exact
+7121,3322,Roof Tilers,partial
+7122,3334,Wall and Floor Tilers,exact
+7123,3332,Plasterers,exact
+7125,3331,Glaziers,exact
+7126,3341,Plumbers,exact
+7127,3421,Airconditioning and Refrigeration Mechanics,exact
+7131,3322,Painting Trades Workers,exact
+7211,3221,"Metal Casting, Forging and Finishing Trades Workers",exact
+7212,3223,Structural Steel and Welding Trades Workers,exact
+7213,3222,Sheetmetal Trades Workers,exact
+7214,3223,Structural Steel and Welding Trades Workers,partial
+7215,8217,Riggers,exact
+7222,3232,Metal Fitters and Machinists,partial
+7223,3232,Metal Fitters and Machinists,partial
+7231,3211,Automotive Electricians and Mechanics,exact
+7232,3231,Aircraft Maintenance Engineers,exact
+7233,3212,"Agricultural, Medical and Industrial Machinery Mechanics",exact
+7411,3411,Electricians,exact
+7412,3411,Electricians,partial
+7413,3424,Electrical Distribution Trades Workers,exact
+7421,3423,Electronic Equipment Trades Workers,exact
+7422,3132,ICT Support Technicians,partial
+#
+# Community and Personal Service Workers (ANZSCO 4xxx)
+5120,3514,Cooks,partial
+5131,4313,Waiters,exact
+5132,4312,Bar Attendants and Baristas,exact
+5141,3911,Hairdressers,exact
+5142,4514,Beauty Therapists,exact
+5152,8113,Commercial Cleaners,partial
+5311,4211,Child Carers,exact
+5312,4221,Education Aides,exact
+5321,4233,Allied Health Assistants,partial
+5322,4231,Personal Care Workers,exact
+5411,4412,Fire and Emergency Workers,exact
+5412,4413,Police,exact
+#
+# Sales workers (ANZSCO 6xxx)
+5221,6211,Sales Assistants (General),partial
+5222,6214,Retail Supervisors,exact
+5223,6211,Sales Assistants (General),exact
+5230,6311,Checkout Operators and Office Cashiers,exact
+#
+# Machinery Operators and Drivers (ANZSCO 7xxx)
+8311,7312,Train and Tram Drivers,exact
+8331,7321,Bus and Coach Drivers,exact
+8332,7331,Truck Drivers,exact
+#
+# Clerical and Administrative Workers (ANZSCO 5xxx)
+3343,5210,Personal Assistants and Secretaries,exact
+4110,5311,General Clerks,exact
+4222,5421,Receptionists,exact
+4321,5991,Stock Clerks,partial
+#
+# Labourers (ANZSCO 8xxx)
+9112,8112,Building and Plumbing Labourers,partial
+9211,8311,Crop Farm Workers,partial
+9333,7411,Storepersons,exact

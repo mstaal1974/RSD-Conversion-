@@ -43,7 +43,12 @@ def _load() -> pd.DataFrame:
             f"ANZSCO crosswalk not found at {path}. "
             "See data/anzsco/README.md."
         )
-    df = pd.read_csv(path, dtype={"isco_code": str, "anzsco_code": str})
+    df = pd.read_csv(
+        path,
+        dtype={"isco_code": str, "anzsco_code": str},
+        comment="#",
+        skip_blank_lines=True,
+    )
     df["isco_code"] = df["isco_code"].str.strip()
     df["anzsco_code"] = df["anzsco_code"].str.strip()
     df["match_quality"] = df.get("match_quality", "exact").fillna("exact").str.lower()
