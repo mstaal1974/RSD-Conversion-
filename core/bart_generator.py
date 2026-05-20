@@ -61,6 +61,47 @@ def _qa(text: str) -> dict:
     }
 
 
+# Minimum cosine between the source PCs and the generated draft below which
+# we flag the draft as likely-hallucinated or missing source content.
+PC_COSINE_THRESHOLD = 0.55
+
+
+def pc_cosine(pcs_text: str, skill_statement: str) -> float | None:
+    """
+    Cosine similarity between the source Performance Criteria and the
+    generated draft, computed with the bundled MiniLM model.
+
+    Returns None if either input is empty or the model can't be loaded.
+    """
+    pcs = (pcs_text or "").strip()
+    draft = (skill_statement or "").strip()
+    if not pcs or not draft:
+        return None
+    try:
+        from core import esco_local
+        model = esco_local.get_matcher().model
+    except Exception:
+        return None
+    embs = model.encode([pcs[:2000], draft], normalize_embeddings=True,
+                        convert_to_numpy=True, show_progress_bar=False)
+    return float(embs[0] @ embs[1])
+
+
+def fidelity_check(pcs_text: str, skill_statement: str,
+                   threshold: float = PC_COSINE_THRESHOLD) -> dict:
+    """
+    Returns {pc_cosine, pc_cosine_pass, threshold}. If the model isn't
+    available we report pc_cosine=None and pc_cosine_pass=True so the
+    overall QA still passes — fidelity is an *additional* check, never a
+    blocker on its own.
+    """
+    cos = pc_cosine(pcs_text, skill_statement)
+    if cos is None:
+        return {"pc_cosine": None, "pc_cosine_pass": True, "threshold": threshold}
+    return {"pc_cosine": round(cos, 4), "pc_cosine_pass": cos >= threshold,
+            "threshold": threshold}
+
+
 def _build_issue_description(qa: dict) -> str:
     issues = []
     if not qa["one_sentence"]:
@@ -129,4 +170,5 @@ def generate_skill_statement(
         rewrite_count += 1
 
     qa["rewrite_count"] = rewrite_count
+    qa.update(fidelity_check(pcs_text, skill))
     return skill, qa, prompt

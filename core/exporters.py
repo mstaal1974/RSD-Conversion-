@@ -187,18 +187,22 @@ def _anzsco_detailed(df: pd.DataFrame) -> pd.Series:
 
 # ── Traceability ──────────────────────────────────────────────────────────────
 
+_TRACEABILITY_COLUMNS = [
+    "RSD Name", "Unit Code", "Unit Title", "Element",
+    "Performance Criteria", "Skill Statement", "Keywords",
+    "TP Code", "TP Title",
+    "Prompt", "Model", "Temperature",
+    "QA: One Sentence", "QA: Word Count",
+    "QA: Has Method", "QA: Has Outcome",
+    "QA: PC Cosine", "QA: PC Cosine Pass",
+    "QA: Passes", "Rewrites", "Error",
+]
+
+
 def to_traceability(df: pd.DataFrame) -> pd.DataFrame:
     """Full audit trail per element."""
     if df is None or len(df) == 0:
-        return pd.DataFrame(columns=[
-            "RSD Name", "Unit Code", "Unit Title", "Element",
-            "Performance Criteria", "Skill Statement", "Keywords",
-            "TP Code", "TP Title",
-            "Prompt", "Model", "Temperature",
-            "QA: One Sentence", "QA: Word Count",
-            "QA: Has Method", "QA: Has Outcome",
-            "QA: Passes", "Rewrites", "Error",
-        ])
+        return pd.DataFrame(columns=_TRACEABILITY_COLUMNS)
 
     out = pd.DataFrame()
     out["RSD Name"]             = _get(df, "element_title")
@@ -217,6 +221,8 @@ def to_traceability(df: pd.DataFrame) -> pd.DataFrame:
     out["QA: Word Count"]       = _get(df, "qa_word_count")
     out["QA: Has Method"]       = _get(df, "qa_has_method")
     out["QA: Has Outcome"]      = _get(df, "qa_has_outcome")
+    out["QA: PC Cosine"]        = _get(df, "qa_pc_cosine")
+    out["QA: PC Cosine Pass"]   = _get(df, "qa_pc_cosine_pass")
     out["QA: Passes"]           = _get(df, "qa_passes")
     out["Rewrites"]             = _get(df, "rewrite_count")
     out["Error"]                = _get(df, "error_message")
