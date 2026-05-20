@@ -1,110 +1,1545 @@
 isco_code,anzsco_code,anzsco_title,match_quality
-# Starter ISCO-08 ↔ ANZSCO crosswalk for the RSD-Conversion platform.
-# Covers ~60 ISCO unit groups commonly hit by Australian VET training packages.
-# NOT authoritative — see data/anzsco/README.md for the full ABS source.
-# Quality flag: "exact" = 1:1 correspondence, "partial" = approximate.
-#
-# Managers (ANZSCO 1xxx)
-1120,1111,Chief Executives and Managing Directors,partial
-1213,1322,Policy and Planning Managers,exact
-1221,1311,Advertising and Sales Managers,partial
-1321,1335,Production Managers,partial
-1330,1331,Construction Managers,exact
-1411,1411,Cafe and Restaurant Managers,partial
-1420,1421,Retail Managers,exact
-#
-# Professionals (ANZSCO 2xxx)
-2120,2241,"Actuaries, Mathematicians and Statisticians",exact
-2142,2332,Civil Engineering Professionals,exact
-2144,2335,"Industrial, Mechanical and Production Engineers",exact
-2151,2333,Electrical Engineers,exact
-2153,2633,Telecommunications Engineering Professionals,exact
-2166,2324,"Graphic and Web Designers, and Illustrators",partial
-2211,2531,General Practitioners and Resident Medical Officers,partial
-2221,2544,Registered Nurses,exact
-2261,2521,Dental Practitioners,exact
-2310,2421,University Lecturers and Tutors,exact
-2320,2422,Vocational Education Teachers,exact
-2330,2414,Secondary School Teachers,exact
-2341,2412,Primary School Teachers,exact
-2342,2411,Early Childhood (Pre-primary School) Teachers,exact
-2411,2211,Accountants,exact
-2421,2247,Management and Organisation Analysts,exact
-2431,2251,Advertising and Marketing Professionals,exact
-2511,2611,ICT Business and Systems Analysts,exact
-2512,2613,Software and Applications Programmers,exact
-2514,2613,Software and Applications Programmers,exact
-2521,2621,"Database and Systems Administrators, and ICT Security Specialists",exact
-2522,2621,"Database and Systems Administrators, and ICT Security Specialists",exact
-2611,2713,Solicitors,partial
-#
-# Technicians and Trades Workers (ANZSCO 3xxx) — core AU VET territory
-3115,3125,Mechanical Engineering Draftspersons and Technicians,exact
-3132,3132,ICT Support Technicians,exact
-3211,3411,Electricians,exact
-3214,3423,Electronic Equipment Trades Workers,partial
-3251,4232,Dental Assistants,partial
-3322,2252,ICT Sales Professionals,partial
-3411,2247,Management and Organisation Analysts,partial
-7112,3311,Bricklayers and Stonemasons,exact
-7114,8211,Concreters,exact
-7115,3312,Carpenters and Joiners,exact
-7119,3319,Other Construction Trades Workers,exact
-7121,3322,Roof Tilers,partial
-7122,3334,Wall and Floor Tilers,exact
-7123,3332,Plasterers,exact
-7125,3331,Glaziers,exact
-7126,3341,Plumbers,exact
-7127,3421,Airconditioning and Refrigeration Mechanics,exact
-7131,3322,Painting Trades Workers,exact
-7211,3221,"Metal Casting, Forging and Finishing Trades Workers",exact
-7212,3223,Structural Steel and Welding Trades Workers,exact
-7213,3222,Sheetmetal Trades Workers,exact
-7214,3223,Structural Steel and Welding Trades Workers,partial
-7215,8217,Riggers,exact
-7222,3232,Metal Fitters and Machinists,partial
-7223,3232,Metal Fitters and Machinists,partial
-7231,3211,Automotive Electricians and Mechanics,exact
-7232,3231,Aircraft Maintenance Engineers,exact
-7233,3212,"Agricultural, Medical and Industrial Machinery Mechanics",exact
-7411,3411,Electricians,exact
-7412,3411,Electricians,partial
-7413,3424,Electrical Distribution Trades Workers,exact
-7421,3423,Electronic Equipment Trades Workers,exact
-7422,3132,ICT Support Technicians,partial
-#
-# Community and Personal Service Workers (ANZSCO 4xxx)
-5120,3514,Cooks,partial
-5131,4313,Waiters,exact
-5132,4312,Bar Attendants and Baristas,exact
-5141,3911,Hairdressers,exact
-5142,4514,Beauty Therapists,exact
-5152,8113,Commercial Cleaners,partial
-5311,4211,Child Carers,exact
-5312,4221,Education Aides,exact
-5321,4233,Allied Health Assistants,partial
-5322,4231,Personal Care Workers,exact
-5411,4412,Fire and Emergency Workers,exact
-5412,4413,Police,exact
-#
-# Sales workers (ANZSCO 6xxx)
-5221,6211,Sales Assistants (General),partial
-5222,6214,Retail Supervisors,exact
-5223,6211,Sales Assistants (General),exact
-5230,6311,Checkout Operators and Office Cashiers,exact
-#
-# Machinery Operators and Drivers (ANZSCO 7xxx)
-8311,7312,Train and Tram Drivers,exact
-8331,7321,Bus and Coach Drivers,exact
-8332,7331,Truck Drivers,exact
-#
-# Clerical and Administrative Workers (ANZSCO 5xxx)
-3343,5210,Personal Assistants and Secretaries,exact
-4110,5311,General Clerks,exact
-4222,5421,Receptionists,exact
-4321,5991,Stock Clerks,partial
-#
-# Labourers (ANZSCO 8xxx)
-9112,8112,Building and Plumbing Labourers,partial
-9211,8311,Crop Farm Workers,partial
-9333,7411,Storepersons,exact
+0110,111212,Defence Force Senior Officer,partial
+0110,139111,Commissioned Defence Force Officer,exact
+0210,139211,Senior Non-commissioned Defence Force Member,exact
+0310,441111,Defence Force Member - Other Ranks,exact
+1111,111311,Local Government Legislator,exact
+1111,111312,Member of Parliament,exact
+1111,111399,Legislators nec,exact
+1112,111111,Chief Executive or Managing Director,partial
+1112,111211,Corporate General Manager,partial
+1112,139999,Specialist Managers nec,partial
+1114,111111,Chief Executive or Managing Director,partial
+1114,111211,Corporate General Manager,partial
+1120,111111,Chief Executive or Managing Director,partial
+1120,111211,Corporate General Manager,partial
+1211,132111,Corporate Services Manager,partial
+1211,132211,Finance Manager,exact
+1211,221211,Company Secretary,exact
+1211,221212,Corporate Treasurer,exact
+1212,132311,Human Resource Manager,partial
+1213,132411,Policy and Planning Manager,exact
+1213,139914,Quality Assurance Manager,partial
+1219,132111,Corporate Services Manager,partial
+1219,139999,Specialist Managers nec,partial
+1219,149212,Customer Service Manager,partial
+1219,149913,Facilities Manager,partial
+1221,131112,Sales and Marketing Manager,partial
+1222,131113,Advertising Manager,exact
+1222,131114,Public Relations Manager,exact
+1223,132511,Research and Development Manager,exact
+1311,121211,Cotton Grower,partial
+1311,121212,Flower Grower,partial
+1311,121213,Fruit or Nut Grower,partial
+1311,121214,"Grain, Oilseed or Pasture Grower  / Field Crop Grower",partial
+1311,121215,Grape Grower,partial
+1311,121216,Mixed Crop Farmer,partial
+1311,121217,Sugar Cane Grower,partial
+1311,121221,Vegetable Grower (Aus) / Market Gardener (NZ),partial
+1311,121299,Crop Farmers nec,partial
+1311,121311,Apiarist,partial
+1311,121312,Beef Cattle Farmer,partial
+1311,121313,Dairy Cattle Farmer,partial
+1311,121314,Deer Farmer,partial
+1311,121315,Goat Farmer,partial
+1311,121316,Horse Breeder,partial
+1311,121317,Mixed Livestock Farmer,partial
+1311,121318,Pig Farmer,partial
+1311,121321,Poultry Farmer,partial
+1311,121322,Sheep Farmer,partial
+1311,121399,Livestock Farmers nec,partial
+1311,121411,Mixed Crop and Livestock Farmer,partial
+1311,133511,Production Manager (Forestry),exact
+1312,121111,Aquaculture Farmer,partial
+1321,133411,Manufacturer,exact
+1321,133512,Production Manager (Manufacturing),partial
+1321,149999,"Hospitality, Retail and Service Managers nec",partial
+1322,133513,Production Manager (Mining),exact
+1323,133111,Construction Project Manager,exact
+1323,133112,Project Builder,partial
+1323,224511,Land Economist,partial
+1324,133311,Importer or Exporter,exact
+1324,133611,Supply and Distribution Manager,exact
+1324,133612,Procurement Manager,exact
+1324,149411,Fleet Manager,exact
+1324,149412,Railway Station Manager,exact
+1324,149413,Transport Company Manager,exact
+1330,135111,Chief Information Officer,partial
+1330,135112,ICT Project Manager,exact
+1330,135199,ICT Managers nec,partial
+1341,134111,Child Care Centre Manager,exact
+1341,241111,Early Childhood (Pre-primary School) Teacher,partial
+1342,134211,Medical Administrator / Medical Superintendent,exact
+1342,134212,Nursing Clinical Director,partial
+1342,134213,Primary Health Organisation Manager,partial
+1342,134299,Health and Welfare Service Managers nec,partial
+1342,512211,Health Practice Manager,partial
+1343,134212,Nursing Clinical Director,partial
+1343,134213,Primary Health Organisation Manager,partial
+1343,134299,Health and Welfare Service Managers nec,partial
+1343,141912,Retirement Village Manager,exact
+1343,254311,Nurse Manager,partial
+1344,134213,Primary Health Organisation Manager,partial
+1344,134214,Welfare Centre Manager,exact
+1344,134299,Health and Welfare Services Managers nec,partial
+1345,134311,School Principal,partial
+1345,134411,Faculty Head,exact
+1345,134412,Regional Education Manager,exact
+1345,134499,Education Managers nec,exact
+1346,149914,Financial Institution Branch Manager,exact
+1349,133211,Engineering Manager,exact
+1349,139112,Commissioned Fire Officer,exact
+1349,139113,Commissioned Police Officer,exact
+1349,139911,Arts Administrator or Manager,exact
+1349,139912,Environmental Manager,exact
+1349,139913,Laboratory Manager,exact
+1349,139915,Sports Administrator,exact
+1349,139999,Specialist Managers nec,partial
+1349,224611,Librarian,partial
+1411,141311,Hotel or Motel Manager,exact
+1411,141999,Accommodation and Hospitality Managers nec,partial
+1411,149999,"Hospitality, Retail and Service Managers nec",partial
+1411,431411,Hotel Service Manager,partial
+1412,141111,Cafe or Restaurant Manager,partial
+1412,142111,Retail Manager (General),partial
+1420,133312,Wholesaler,exact
+1420,142111,Retail Manager (General),partial
+1420,142112,Antique Dealer,partial
+1420,142113,Betting Agency Manager,partial
+1420,142114,Hair or Beauty Salon Manager,partial
+1420,142115,Post Office Manager,partial
+1431,149111,Amusement Centre Manager,exact
+1431,149112,Fitness Centre Manager,exact
+1431,149113,Sports Centre Manager,exact
+1431,149912,Cinema or Theatre Manager,exact
+1439,141211,Caravan Park and Camping Ground Manager,exact
+1439,141411,Licensed Club Manager,exact
+1439,141999,Accommodation and Hospitality Managers nec,partial
+1439,142116,Travel Agency Manager,exact
+1439,149211,Call or Contact Centre Manager,exact
+1439,149212,Customer Service Manager,partial
+1439,149911,Boarding Kennel or Cattery Operator,exact
+1439,149913,Facilities Manager,partial
+1439,149915,Equipment Hire Manager,exact
+1439,149999,"Hospitality, Retail and Service Managers nec",partial
+1439,431311,Gaming Worker,partial
+2111,234914,Physicist,partial
+2112,234913,Meteorologist,exact
+2113,234211,Chemist,exact
+2113,251512,Industrial Pharmacist,exact
+2114,234411,Geologist,exact
+2114,234412,Geophysicist,exact
+2114,234413,Hydrogeologist,exact
+2120,224111,Actuary,exact
+2120,224112,Mathematician,exact
+2120,224113,Statistician,partial
+2120,261313,Software Engineer,partial
+2131,225499,Technical Sales Representatives nec,partial
+2131,234112,Agricultural Scientist,partial
+2131,234511,Life Scientist (General),exact
+2131,234513,Biochemist,exact
+2131,234514,Biotechnologist,exact
+2131,234515,Botanist,exact
+2131,234516,Marine Biologist,partial
+2131,234517,Microbiologist,exact
+2131,234518,Zoologist,partial
+2131,234599,Life Scientists nec,partial
+2131,234611,Medical Laboratory Scientist,partial
+2132,225499,Technical Sales Representatives nec,partial
+2132,234111,Agricultural Consultant,exact
+2132,234112,Agricultural Scientist,partial
+2132,234113,Forester / Forest Scientist,exact
+2132,234399,Environmental Scientists nec,partial
+2132,234516,Marine Biologist,partial
+2132,234518,Zoologist,partial
+2133,234311,Conservation Officer,exact
+2133,234312,Environmental Consultant,partial
+2133,234313,Environmental Research Scientist,partial
+2133,234314,Park Ranger,partial
+2133,234399,Environmental Scientists nec,partial
+2141,233511,Industrial Engineer,partial
+2141,233513,Production or Plant Engineer,exact
+2141,233914,Engineering Technologist,partial
+2142,233211,Civil Engineer,partial
+2142,233212,Geotechnical Engineer,exact
+2142,233214,Structural Engineer,exact
+2142,233215,Transport Engineer,partial
+2142,233914,Engineering Technologist,partial
+2143,233915,Environmental Engineer,exact
+2144,233512,Mechanical Engineer,exact
+2144,233911,Aeronautical Engineer,exact
+2144,233914,Engineering Technologist,partial
+2144,233916,Naval Architect / Marine Designer,exact
+2145,233111,Chemical Engineer,exact
+2145,233914,Engineering Technologist,partial
+2145,234212,Food Technologist,exact
+2145,234213,Wine Maker,exact
+2146,233112,Materials Engineer,partial
+2146,233611,Mining Engineer (excluding Petroleum),exact
+2146,233612,Petroleum Engineer,exact
+2146,233914,Engineering Technologist,partial
+2146,233999,Engineering Professionals nec,partial
+2146,234912,Metallurgist,partial
+2149,233112,Materials Engineer,partial
+2149,233213,Quantity Surveyor,exact
+2149,233511,Industrial Engineer,partial
+2149,233912,Agricultural Engineer,exact
+2149,233913,Biomedical Engineer,exact
+2149,233914,Engineering Technologist,partial
+2149,233999,Engineering Professionals nec,partial
+2149,234912,Metallurgist,partial
+2149,312611,Safety Inspector,partial
+2151,233311,Electrical Engineer,partial
+2151,233914,Engineering Technologist,partial
+2152,233411,Electronics Engineer,exact
+2152,233914,Engineering Technologist,partial
+2153,263311,Telecommunications Engineer,exact
+2153,263312,Telecommunications Network Engineer,exact
+2161,232111,Architect,exact
+2161,232511,Interior Designer,partial
+2162,232112,Landscape Architect,partial
+2162,232611,Urban and Regional Planner,partial
+2163,232311,Fashion Designer,partial
+2163,232312,Industrial Designer,partial
+2163,232313,Jewellery Designer,exact
+2164,232611,Urban and Regional Planner,partial
+2165,232212,Surveyor,partial
+2165,232213,Cartographer,exact
+2165,232214,Other Spatial Scientist,exact
+2166,232411,Graphic Designer,partial
+2166,232412,Illustrator,partial
+2166,232413,Multimedia Designer,partial
+2166,232414,Web Designer,exact
+2166,261211,Multimedia Specialist,partial
+2166,263299,ICT Support and Test Engineers nec,partial
+2211,253111,General Practitioner,exact
+2211,253112,Resident Medical Officer,exact
+2212,253211,Anaesthetist,exact
+2212,253311,Specialist Physician (General Medicine),exact
+2212,253312,Cardiologist,exact
+2212,253313,Clinical Haematologist,exact
+2212,253314,Medical Oncologist,exact
+2212,253315,Endocrinologist,exact
+2212,253316,Gastroenterologist,exact
+2212,253317,Intensive Care Specialist,exact
+2212,253318,Neurologist,exact
+2212,253321,Paediatrician,partial
+2212,253322,Renal Medicine Specialist,exact
+2212,253323,Rheumatologist,exact
+2212,253324,Thoracic Medicine Specialist,exact
+2212,253399,Specialist Physicians nec,partial
+2212,253411,Psychiatrist,exact
+2212,253511,Surgeon (General),exact
+2212,253512,Cardiothoracic Surgeon,exact
+2212,253513,Neurosurgeon,exact
+2212,253514,Orthopaedic Surgeon,exact
+2212,253515,Otorhinolaryngologist,exact
+2212,253516,Paediatric Surgeon,exact
+2212,253517,Plastic and Reconstructive Surgeon,exact
+2212,253518,Urologist,exact
+2212,253521,Vascular Surgeon,exact
+2212,253911,Dermatologist,exact
+2212,253912,Emergency Medicine Specialist,exact
+2212,253913,Obstetrician and Gynaecologist,exact
+2212,253914,Ophthalmologist,exact
+2212,253915,Pathologist,partial
+2212,253917,Diagnostic and Interventional Radiologist,exact
+2212,253918,Radiation Oncologist,exact
+2212,253999,Medical Practitioners nec,partial
+2221,254211,Nurse Educator,exact
+2221,254212,Nurse Researcher,exact
+2221,254311,Nurse Manager,partial
+2221,254411,Nurse Practitioner,exact
+2221,254412,Registered Nurse (Aged Care),exact
+2221,254413,Registered Nurse (Child and Family Health),exact
+2221,254414,Registered Nurse (Community Health),exact
+2221,254415,Registered Nurse (Critical Care and Emergency),exact
+2221,254416,Registered Nurse (Developmental Disability),exact
+2221,254417,Registered Nurse (Disability and Rehabilitation),partial
+2221,254418,Registered Nurse (Medical),exact
+2221,254421,Registered Nurse (Medical Practice),exact
+2221,254422,Registered Nurse (Mental Health),exact
+2221,254423,Registered Nurse (Perioperative),exact
+2221,254424,Registered Nurse (Surgical),exact
+2221,254425,Registered Nurse (Paediatrics),exact
+2221,254499,Registered Nurses nec,partial
+2222,251911,Health Promotion Officer,partial
+2222,254111,Midwife,exact
+2230,251999,Health Diagnostic and Promotion Professionals nec,partial
+2230,252211,Acupuncturist,exact
+2230,252212,Homoeopath,partial
+2230,252213,Naturopath,exact
+2230,252214,Traditional Chinese Medicine Practitioner,exact
+2230,252215,Traditional Māori Health Practitioner,partial
+2230,252299,Complementary Health Therapists nec,partial
+2230,272199,Counsellors nec,partial
+2230,451513,Herbalist (Western),partial
+2240,411112,Intensive Care Ambulance Paramedic (Aus) / Ambulance Paramedic (NZ),partial
+2250,234711,Veterinarian,exact
+2261,252311,Dental Specialist,exact
+2261,252312,Dentist,exact
+2262,251511,Hospital Pharmacist,exact
+2262,251513,Retail Pharmacist,exact
+2263,251311,Environmental Health Officer,partial
+2263,251312,Occupational Health and Safety Adviser,partial
+2263,272114,Rehabilitation Counsellor,partial
+2264,252511,Physiotherapist,exact
+2265,251111,Dietitian,exact
+2265,251112,Nutritionist,exact
+2266,252711,Audiologist,exact
+2266,252712,Speech Pathologist \ Speech Language Therapist,exact
+2266,311299,Medical Technicians nec,partial
+2267,251411,Optometrist,exact
+2267,251412,Orthoptist,exact
+2269,234599,Life Scientists nec,partial
+2269,234915,Exercise Physiologist,partial
+2269,234999,Natural and Physical Science Professionals nec,partial
+2269,251999,Health Diagnostic and Promotion Professionals nec,partial
+2269,252111,Chiropractor,exact
+2269,252112,Osteopath,exact
+2269,252212,Homoeopath,partial
+2269,252215,Traditional Māori Health Practitioner,partial
+2269,252299,Complementary Health Therapists nec,partial
+2269,252411,Occupational Therapist,exact
+2269,252611,Podiatrist,exact
+2269,272199,Counsellors nec,partial
+2269,272314,Psychotherapist,partial
+2269,451513,Herbalist (Western),partial
+2310,242111,University Lecturer,exact
+2310,242112,University Tutor,exact
+2310,242211,Vocational Education Teacher / Polytechnic Teacher,partial
+2320,242211,Vocational Education Teacher / Polytechnic Teacher,partial
+2330,241211,Kaiako Kura Kaupapa Māori (Māori-medium Primary School Teacher),partial
+2330,241212,Pouako Kura Kaupapa Māori (Māori-medium Primary School Senior Teacher),partial
+2330,241213,Primary School Teacher,partial
+2330,241311,Middle School Teacher / Intermediate School Teacher,exact
+2330,241411,Secondary School Teacher,partial
+2341,241211,Kaiako Kura Kaupapa Māori (Māori-medium Primary School Teacher),partial
+2341,241212,Pouako Kura Kaupapa Māori (Māori-medium Primary School Senior Teacher),partial
+2341,241213,Primary School Teacher,partial
+2341,241411,Secondary School Teacher,partial
+2342,241111,Early Childhood (Pre-primary School) Teacher,partial
+2342,241112,Kaiako Kohanga Reo (Māori Language Nest Teacher),exact
+2351,232413,Multimedia Designer,partial
+2351,249111,Education Adviser,exact
+2351,249112,Education Reviewer,exact
+2352,241511,Special Needs Teacher,partial
+2352,241512,Teacher of the Hearing Impaired,exact
+2352,241513,Teacher of the Sight Impaired,exact
+2352,241599,Special Education Teachers nec,partial
+2352,249299,Private Tutors and Teachers nec,partial
+2353,249299,Private Tutors and Teachers nec,partial
+2353,249311,Teacher of English to Speakers of Other Languages,exact
+2354,249214,Music Teacher (Private Tuition),exact
+2355,249211,Art Teacher (Private Tuition),exact
+2355,249212,Dance Teacher (Private Tuition),exact
+2355,249213,Drama Teacher (Private Tuition),exact
+2356,223211,ICT Trainer,partial
+2356,223311,Training and Development Professional,partial
+2356,242211,Vocational Education Teacher / Polytechnic Teacher,partial
+2359,241511,Special Needs Teacher,partial
+2359,241599,Special Education Teachers nec,partial
+2359,249299,Private Tutors and Teachers nec,partial
+2359,272115,Student Counsellor,exact
+2411,221111,Accountant (General),partial
+2411,221112,Management Accountant,exact
+2411,221113,Taxation Accountant,exact
+2411,221213,External Auditor,exact
+2411,221214,Internal Auditor,exact
+2412,222311,Financial Investment Adviser,exact
+2412,222312,Financial Investment Manager,exact
+2413,222299,Financial Dealers nec,partial
+2421,139914,Quality Assurance Manager,partial
+2421,224711,Management Consultant,partial
+2421,224712,Organisation and Methods Analyst,exact
+2421,261111,ICT Business Analyst,partial
+2422,224411,Intelligence Officer,exact
+2422,224412,Policy Analyst,exact
+2422,224911,Electorate Officer,exact
+2423,223111,Human Resource Adviser,exact
+2423,223112,Recruitment Consultant,partial
+2423,223113,Workplace Relations Adviser,partial
+2423,272111,Careers Counsellor,exact
+2423,411712,Disabilities Services Officer,partial
+2424,223211,ICT Trainer,partial
+2424,223311,Training and Development Professional,partial
+2424,242211,Vocational Education Teacher / Polytechnic Teacher,partial
+2431,212112,Media Producer (excluding Video),partial
+2431,212411,Copywriter,partial
+2431,225111,Advertising Specialist,partial
+2431,225112,Market Research Analyst,partial
+2431,225113,Marketing Specialist,partial
+2432,212411,Copywriter,partial
+2432,224912,Liaison Officer,partial
+2432,225311,Public Relations Professional,exact
+2433,225411,Sales Representative (Industrial Products),exact
+2433,225412,Sales Representative (Medical and Pharmaceutical Products),exact
+2433,225499,Technical Sales Representatives nec,partial
+2433,234112,Agricultural Scientist,partial
+2433,234518,Zoologist,partial
+2434,225211,ICT Account Manager,exact
+2434,225212,ICT Business Development Manager,exact
+2434,225213,ICT Sales Representative,exact
+2511,261111,ICT Business Analyst,partial
+2511,261112,Systems Analyst,partial
+2511,261313,Software Engineer,partial
+2512,261212,Web Developer,partial
+2512,261311,Analyst Programmer,partial
+2512,261312,Developer Programmer,partial
+2512,261313,Software Engineer,partial
+2512,261399,Software and Applications Programmers nec,partial
+2513,232413,Multimedia Designer,partial
+2513,261211,Multimedia Specialist,partial
+2513,261212,Web Developer,partial
+2514,261212,Web Developer,partial
+2514,261311,Analyst Programmer,partial
+2514,261312,Developer Programmer,partial
+2514,261313,Software Engineer,partial
+2514,261399,Software and Applications Programmers nec,partial
+2519,261314,Software Tester,partial
+2519,263211,ICT Quality Assurance Engineer,exact
+2519,263212,ICT Support Engineer,exact
+2519,263213,ICT Systems Test Engineer,exact
+2519,263299,ICT Support and Test Engineers nec,partial
+2521,262111,Database Administrator,exact
+2522,262113,Systems Administrator,exact
+2522,263112,Network Administrator,exact
+2523,263111,Computer Network and Systems Engineer,exact
+2523,263113,Network Analyst,partial
+2529,262112,ICT Security Specialist,partial
+2611,271111,Barrister,partial
+2611,271214,Intellectual Property Lawyer,exact
+2611,271311,Solicitor,exact
+2612,271211,Judge,exact
+2612,271212,Magistrate,exact
+2619,224913,Migration Agent / Immigration Consultant,exact
+2619,271213,Tribunal Member,exact
+2619,271299,Judicial and Other Legal Professionals nec,partial
+2619,599214,Law Clerk,partial
+2621,224211,Archivist,exact
+2621,224212,Gallery or Museum Curator,exact
+2621,224214,Records Manager,partial
+2621,234911,Conservator,exact
+2622,224214,Records Manager,partial
+2622,224611,Librarian,partial
+2622,224999,Information and Organisation Professionals nec,partial
+2631,224311,Economist,exact
+2631,224511,Land Economist,partial
+2632,272414,Archaeologist,exact
+2632,272499,Social Professionals nec,partial
+2633,272411,Historian,exact
+2633,272499,Social Professionals nec,partial
+2634,272311,Clinical Psychologist,exact
+2634,272312,Educational Psychologist,exact
+2634,272313,Organisational Psychologist,exact
+2634,272314,Psychotherapist,partial
+2634,272399,Psychologists nec,exact
+2635,272112,Drug and Alcohol Counsellor,exact
+2635,272113,Family and Marriage Counsellor,exact
+2635,272114,Rehabilitation Counsellor,partial
+2635,272199,Counsellors nec,partial
+2635,272314,Psychotherapist,partial
+2635,272511,Social Worker,exact
+2635,272611,Community Arts Worker,exact
+2635,272612,Recreation Officer / Recreation Coordinator,exact
+2635,272613,Welfare Worker,partial
+2635,411714,Parole or Probation Officer,exact
+2636,139999,Specialist Managers nec,partial
+2636,272211,Minister of Religion,partial
+2641,212211,Author,exact
+2641,212212,Book or Script Editor,exact
+2641,212415,Technical Writer,exact
+2641,212499,Journalists and Other Writers nec,partial
+2642,212412,Newspaper or Periodical Editor,partial
+2642,212413,Print Journalist,exact
+2642,212414,Radio Journalist,exact
+2642,212416,Television Journalist,exact
+2642,212499,Journalists and Other Writers nec,partial
+2642,599913,Proof Reader,partial
+2643,272412,Interpreter,exact
+2643,272413,Translator,exact
+2643,272499,Social Professionals nec,partial
+2651,211411,Painter (Visual Arts),exact
+2651,211412,Potter or Ceramic Artist,partial
+2651,211413,Sculptor,exact
+2651,232412,Illustrator,partial
+2652,211113,Entertainer or Variety Artist,partial
+2652,211199,"Actors, Dancers and Other Entertainers nec",partial
+2652,211211,Composer,exact
+2652,211212,Music Director,exact
+2652,211213,Musician (Instrumental),exact
+2652,211214,Singer,exact
+2652,211299,Music Professionals nec,partial
+2652,212113,Radio Presenter,partial
+2653,211112,Dancer or Choreographer,exact
+2654,212111,Artistic Director,exact
+2654,212112,Media Producer (excluding Video),partial
+2654,212311,"Art Director (Film, Television or Stage)",exact
+2654,212312,"Director (Film, Television, Radio or Stage)",partial
+2654,212313,Director of Photography,exact
+2654,212314,Film and Video Editor,exact
+2654,212315,Program Director (Television or Radio),partial
+2654,212316,Stage Manager,partial
+2654,212317,Technical Director,exact
+2654,212318,Video Producer,exact
+2654,212399,"Film, Television, Radio and Stage Directors nec",partial
+2654,225111,Advertising Specialist,partial
+2654,232311,Fashion Designer,partial
+2655,211111,Actor,exact
+2655,211199,"Actors, Dancers and Other Entertainers nec",partial
+2656,212113,Radio Presenter,partial
+2656,212114,Television Presenter,exact
+2659,211113,Entertainer or Variety Artist,partial
+2659,211199,"Actors, Dancers and Other Entertainers nec",partial
+2659,211299,Music Professionals nec,partial
+2659,212113,Radio Presenter,partial
+3111,311411,Chemistry Technician,exact
+3111,311412,Earth Science Technician,exact
+3111,311414,School Laboratory Technician,exact
+3111,311415,Hydrographer,exact
+3111,311499,Science Technicians nec,partial
+3111,821915,Surveyor's Assistant,partial
+3112,312113,Building Inspector,partial
+3112,312114,Construction Estimator,exact
+3112,312116,Surveying or Spatial Science Technician,partial
+3112,312212,Civil Engineering Technician,exact
+3113,312312,Electrical Engineering Technician,exact
+3114,312412,Electronic Engineering Technician,partial
+3115,231215,Marine Surveyor,exact
+3115,312512,Mechanical Engineering Technician,exact
+3116,312999,Building and Engineering Technicians nec,partial
+3117,312611,Safety Inspector,partial
+3117,312912,Metallurgical or Materials Technician,partial
+3118,312111,Architectural Draftsperson,exact
+3118,312116,Surveying or Spatial Science Technician,partial
+3118,312199,"Architectural, Building and Surveying Technicians nec",partial
+3118,312211,Civil Engineering Draftsperson,exact
+3118,312311,Electrical Engineering Draftsperson,exact
+3118,312411,Electronic Engineering Draftsperson,exact
+3118,312511,Mechanical Engineering Draftsperson,exact
+3118,312999,Building and Engineering Technicians nec,partial
+3119,311499,Science Technicians nec,partial
+3119,312199,"Architectural, Building and Surveying Technicians nec",partial
+3119,312912,Metallurgical or Materials Technician,partial
+3119,312999,Building and Engineering Technicians nec,partial
+3119,399916,Plastics Technician,exact
+3119,399918,Fire Protection Equipment Technician,exact
+3121,312913,Mine Deputy,exact
+3122,133512,Production Manager (Manufacturing),partial
+3122,149999,"Hospitality, Retail and Service Managers nec",partial
+3123,312112,Building Associate,partial
+3123,721211,Earthmoving Plant Operator (General),partial
+3131,399212,Gas or Petroleum Operator,partial
+3131,399213,Power Generation Plant Operator,exact
+3132,712913,Cement Production Plant Operator,partial
+3132,712921,Waste Water or Water Plant Operator,exact
+3132,712999,Stationary Plant Operators nec,partial
+3133,399211,Chemical Plant Operator,exact
+3134,399212,Gas or Petroleum Operator,partial
+3135,712311,Engineering Production Worker,partial
+3139,711311,Paper Products Machine Operator,partial
+3139,712916,Paper and Pulp Mill Operator,partial
+3139,832211,Product Assembler,partial
+3141,311413,Life Science Technician,partial
+3142,311111,Agricultural Technician,partial
+3143,311413,Life Science Technician,partial
+3151,231212,Ship's Engineer,exact
+3152,231213,Ship's Master,partial
+3152,231214,Ship's Officer,exact
+3152,231299,Marine Transport Professionals nec,exact
+3153,231111,Aeroplane Pilot,exact
+3153,231113,Flying Instructor,exact
+3153,231114,Helicopter Pilot,exact
+3153,231199,Air Transport Professionals nec,exact
+3154,231112,Air Traffic Controller,exact
+3155,312412,Electronic Engineering Technician,partial
+3155,313211,Radiocommunications Technician,partial
+3211,251211,Medical Diagnostic Radiographer,exact
+3211,251212,Medical Radiation Therapist,exact
+3211,251213,Nuclear Medicine Technologist,exact
+3211,251214,Sonographer,partial
+3211,311212,Cardiac Technician,partial
+3212,234611,Medical Laboratory Scientist,partial
+3212,311213,Medical Laboratory Technician,exact
+3213,311215,Pharmacy Technician,partial
+3214,251912,Orthotist or Prosthetist,exact
+3214,311299,Medical Technicians nec,partial
+3214,411212,Dental Prosthetist,exact
+3214,411213,Dental Technician,exact
+3221,411411,Enrolled Nurse,partial
+3221,411412,Mothercraft Nurse,partial
+3222,411411,Enrolled Nurse,partial
+3222,411412,Mothercraft Nurse,partial
+3230,251999,Health Diagnostic and Promotion Professionals nec,partial
+3230,252212,Homoeopath,partial
+3230,252215,Traditional Māori Health Practitioner,partial
+3230,252299,Complementary Health Therapists nec,partial
+3230,451511,Natural Remedy Consultant,exact
+3230,451513,Herbalist (Western),partial
+3240,311413,Life Science Technician,partial
+3240,361311,Veterinary Nurse,partial
+3251,411211,Dental Hygienist,exact
+3251,411214,Dental Therapist,exact
+3251,423211,Dental Assistant,partial
+3252,224213,Health Information Manager,exact
+3252,561311,Filing or Registry Clerk,partial
+3252,599915,Clinical Coder,exact
+3253,251911,Health Promotion Officer,partial
+3253,411511,Aboriginal and Torres Strait Islander Health Worker,partial
+3254,399913,Optical Dispenser / Dispensing Optician,exact
+3255,411611,Massage Therapist,partial
+3255,423314,Therapy Aide,partial
+3256,311299,Medical Technicians nec,partial
+3257,251311,Environmental Health Officer,partial
+3257,311312,Meat Inspector,exact
+3257,311399,Primary Products Inspectors nec,partial
+3257,312611,Safety Inspector,partial
+3257,599514,Noxious Weeds and Pest Inspector,exact
+3257,599517,Train Examiner,partial
+3257,599518,Transport Operations Inspector,partial
+3257,599521,Water Inspector,exact
+3257,599599,Inspectors and Regulatory Officers nec,partial
+3257,821611,Railway Track Worker,partial
+3258,411111,Ambulance Officer,partial
+3258,411112,Intensive Care Ambulance Paramedic (Aus) / Ambulance Paramedic (NZ),partial
+3259,251214,Sonographer,partial
+3259,311211,Anaesthetic Technician,exact
+3259,311212,Cardiac Technician,partial
+3259,311214,Operating Theatre Technician,exact
+3259,311299,Medical Technicians nec,partial
+3259,411311,Diversional Therapist,partial
+3259,423314,Therapy Aide,partial
+3311,222112,Finance Broker,exact
+3311,222199,Financial Brokers nec,partial
+3311,222211,Financial Market Dealer,exact
+3311,222212,Futures Trader,exact
+3311,222213,Stockbroking Dealer,partial
+3311,222299,Financial Dealers nec,partial
+3312,552211,Credit or Loans Officer (Aus) / Finance Clerk (NZ),exact
+3313,551211,Bookkeeper,partial
+3313,552314,Statistical Clerk,partial
+3313,561911,Classified Advertising Clerk,partial
+3313,561999,Clerical and Office Support Workers nec,partial
+3313,599999,Clerical and Administrative Workers nec,partial
+3313,631112,Office Cashier,partial
+3314,552314,Statistical Clerk,partial
+3314,561911,Classified Advertising Clerk,partial
+3314,561999,Clerical and Office Support Workers nec,partial
+3314,599999,Clerical and Administrative Workers nec,partial
+3314,631112,Office Cashier,partial
+3315,224512,Valuer,exact
+3315,599611,Insurance Investigator,exact
+3315,599612,Insurance Loss Adjuster,exact
+3315,599613,Insurance Risk Surveyor,exact
+3321,222113,Insurance Broker,exact
+3321,552312,Insurance Consultant,partial
+3321,611211,Insurance Agent,exact
+3322,611311,Sales Representative (Building and Plumbing Supplies),exact
+3322,611312,Sales Representative (Business Services),partial
+3322,611313,Sales Representative (Motor Vehicle Parts and Accessories),exact
+3322,611314,Sales Representative (Personal and Household Goods),exact
+3322,611399,Sales Representatives nec,exact
+3323,639211,Retail Buyer,partial
+3323,639212,Wool Buyer,partial
+3323,639412,Transport Conductor,partial
+3323,639911,Other Sales Support Worker,partial
+3324,222111,Commodities Trader,exact
+3331,591212,Import-Export Clerk,partial
+3332,149311,Conference and Event Organiser,exact
+3333,223112,Recruitment Consultant,partial
+3333,411712,Disabilities Services Officer,partial
+3334,612111,Business Broker,exact
+3334,612112,Property Manager,partial
+3334,612113,Real Estate Agency Principal / Real Estate Agency Licensee,exact
+3334,612114,Real Estate Agent,exact
+3334,612115,Real Estate Representative,exact
+3339,222199,Financial Brokers nec,partial
+3339,223112,Recruitment Consultant,partial
+3339,224511,Land Economist,partial
+3339,224912,Liaison Officer,partial
+3339,224999,Information and Organisation Professionals nec,partial
+3339,411712,Disabilities Services Officer,partial
+3339,442216,Security Consultant,partial
+3339,442299,Security Officers and Guards nec,partial
+3339,511111,Contract Administrator,exact
+3339,511112,Program or Project Administrator,exact
+3339,599916,Facilities Administrator,exact
+3339,611111,Auctioneer,exact
+3339,611112,Stock and Station Agent,exact
+3339,611312,Sales Representative (Business Services),partial
+3341,512111,Office Manager,exact
+3341,512299,Practice Managers nec,partial
+3341,541111,Call or Contact Centre Team Leader,exact
+3342,512299,Practice Managers nec,partial
+3342,521212,Legal Secretary,exact
+3343,521111,Personal Assistant,exact
+3343,521211,Secretary (General),partial
+3343,532112,Machine Shorthand Reporter,exact
+3344,512211,Health Practice Manager,partial
+3344,542114,Medical Receptionist,partial
+3351,311313,Quarantine Officer,partial
+3351,599511,Customs Officer,exact
+3351,599512,Immigration Officer,partial
+3352,599516,Taxation Inspector,exact
+3353,599515,Social Security Assessor,exact
+3354,552314,Statistical Clerk,partial
+3354,561911,Classified Advertising Clerk,partial
+3354,561999,Clerical and Office Support Workers nec,partial
+3354,599513,Motor Vehicle Licence Examiner,exact
+3354,599599,Inspectors and Regulatory Officers nec,partial
+3354,599999,Clerical and Administrative Workers nec,partial
+3354,631112,Office Cashier,partial
+3355,441311,Detective,partial
+3355,441312,Police Officer,partial
+3359,224914,Patents Examiner,exact
+3359,311311,Fisheries Officer,exact
+3359,311313,Quarantine Officer,partial
+3359,311399,Primary Products Inspectors nec,partial
+3359,312115,Plumbing Inspector,exact
+3359,561913,Parking Inspector,exact
+3359,599512,Immigration Officer,partial
+3359,599517,Train Examiner,partial
+3359,599518,Transport Operations Inspector,partial
+3359,599599,Inspectors and Regulatory Officers nec,partial
+3359,821611,Railway Track Worker,partial
+3411,442214,Private Investigator,exact
+3411,599111,Conveyancer,exact
+3411,599112,Legal Executive,exact
+3411,599211,Clerk of Court,exact
+3411,599212,Court Bailiff or Sheriff (Aus) / Court Collections Officer (NZ),exact
+3411,599213,Court Orderly (Aus) / Court Registry Officer (NZ),exact
+3411,599214,Law Clerk,partial
+3411,599215,Trust Officer,exact
+3412,223112,Recruitment Consultant,partial
+3412,224912,Liaison Officer,partial
+3412,224999,Information and Organisation Professionals nec,partial
+3412,411512,Kaiāwhina (Hauora) (Māori Health Assistant),exact
+3412,411711,Community Worker,partial
+3412,411712,Disabilities Services Officer,partial
+3412,411713,Family Support Worker,exact
+3412,411715,Residential Care Officer,partial
+3412,411716,Youth Worker,partial
+3412,421112,Family Day Care Worker,partial
+3412,423411,Child or Youth Residential Care Assistant,partial
+3412,423413,Refuge Worker,exact
+3413,272211,Minister of Religion,partial
+3413,451816,Religious Assistant,exact
+3421,452411,Footballer,exact
+3421,452412,Golfer,exact
+3421,452413,Jockey,exact
+3421,452499,Sportspersons nec,partial
+3422,452311,Diving Instructor (Open Water),exact
+3422,452312,Gymnastics Coach or Instructor,exact
+3422,452314,Snowsport Instructor,exact
+3422,452315,Swimming Coach or Instructor,exact
+3422,452316,Tennis Coach,exact
+3422,452317,Other Sports Coach or Instructor,partial
+3422,452318,Dog and Horse Racing Official,exact
+3422,452321,Sports Development Officer,exact
+3422,452322,Sports Umpire,exact
+3422,452323,Other Sports Official,exact
+3423,452111,Fitness Instructor,partial
+3423,452211,Bungy Jump Master,exact
+3423,452212,Fishing Guide,exact
+3423,452213,Hunting Guide,exact
+3423,452214,Mountain or Glacier Guide,exact
+3423,452215,Outdoor Adventure Instructor,exact
+3423,452216,Trekking Guide,exact
+3423,452217,Whitewater Rafting Guide,exact
+3423,452299,Outdoor Adventure Guides nec,exact
+3423,452313,Horse Riding Coach or Instructor,exact
+3431,211311,Photographer,exact
+3431,399915,Photographer's Assistant,partial
+3432,232511,Interior Designer,partial
+3432,399912,Interior Decorator,exact
+3432,639511,Visual Merchandiser,partial
+3433,399311,Gallery or Museum Technician,exact
+3433,399312,Library Technician,exact
+3434,351311,Chef,partial
+3435,211199,"Actors, Dancers and Other Entertainers nec",partial
+3435,212112,Media Producer (excluding Video),partial
+3435,212316,Stage Manager,partial
+3435,399513,Light Technician,exact
+3435,399517,Television Equipment Operator,partial
+3435,399599,Performing Arts Technicians nec,partial
+3435,451814,Body Artist,exact
+3435,599912,"Production Assistant (Film, Television, Radio or Stage)",partial
+3435,639511,Visual Merchandiser,partial
+3511,313199,ICT Support Technicians nec,partial
+3512,313112,ICT Customer Support Officer,partial
+3513,313112,ICT Customer Support Officer,partial
+3514,313113,Web Administrator,exact
+3521,342312,Communications Operator,exact
+3521,399511,Broadcast Transmitter Operator,exact
+3521,399512,"Camera Operator (Film, Television or Video)",exact
+3521,399516,Sound Technician,exact
+3521,399517,Television Equipment Operator,partial
+3521,399599,Performing Arts Technicians nec,partial
+3521,711199,"Clay, Concrete, Glass and Stone Processing Machine Operators nec",partial
+3521,711912,Motion Picture Projectionist,partial
+3521,711999,Machine Operators nec,partial
+3522,313211,Radiocommunications Technician,partial
+3522,313212,Telecommunications Field Engineer,exact
+3522,313213,Telecommunications Network Planner,exact
+3522,313214,Telecommunications Technical Officer or Technologist,exact
+4110,531111,General Clerk,exact
+4120,521211,Secretary (General),partial
+4131,532113,Word Processing Operator,exact
+4132,532111,Data Entry Operator,exact
+4211,552111,Bank Worker,exact
+4212,431311,Gaming Worker,partial
+4212,552311,Bookmaker,exact
+4212,561111,Betting Agency Counter Clerk,exact
+4212,561112,Bookmaker's Clerk,exact
+4212,561113,Telephone Betting Clerk,exact
+4212,561199,Betting Clerks nec,exact
+4213,621111,Sales Assistant (General),partial
+4214,599311,Debt Collector,exact
+4221,451611,Tourist Information Officer,exact
+4221,451612,Travel Consultant,exact
+4221,639411,Ticket Seller,partial
+4222,541112,Call or Contact Centre Operator,exact
+4223,561611,Switchboard Operator,exact
+4224,542113,Hotel or Motel Receptionist,exact
+4225,541211,Information Officer,exact
+4226,542111,Receptionist (General),exact
+4226,542114,Medical Receptionist,partial
+4227,561511,Survey Interviewer,exact
+4229,542112,Admissions Clerk,exact
+4229,599914,Radio Despatcher,exact
+4311,551111,Accounts Clerk,exact
+4311,551112,Cost Clerk,exact
+4311,551211,Bookkeeper,partial
+4312,552312,Insurance Consultant,partial
+4312,552313,Money Market Clerk,partial
+4312,552314,Statistical Clerk,partial
+4312,561911,Classified Advertising Clerk,partial
+4312,561999,Clerical and Office Support Workers nec,partial
+4312,599999,Clerical and Administrative Workers nec,partial
+4312,631112,Office Cashier,partial
+4313,551311,Payroll Clerk,partial
+4321,591113,Purchasing Officer,partial
+4321,591115,Stock Clerk,exact
+4321,591116,Warehouse Administrator,exact
+4321,591117,Order Clerk,exact
+4321,712922,Weighbridge Operator,exact
+4321,741111,Storeperson,partial
+4322,312911,Maintenance Planner,exact
+4322,591112,Production Clerk,partial
+4323,552314,Statistical Clerk,partial
+4323,561911,Classified Advertising Clerk,partial
+4323,561999,Clerical and Office Support Workers nec,partial
+4323,591112,Production Clerk,partial
+4323,591211,Despatching and Receiving Clerk,exact
+4323,599999,Clerical and Administrative Workers nec,partial
+4323,631112,Office Cashier,partial
+4411,599711,Library Assistant,exact
+4412,561212,Postal Delivery Officer,partial
+4412,561411,Mail Clerk,exact
+4412,561412,Postal Sorting Officer,exact
+4412,732111,Delivery Driver,partial
+4413,212412,Newspaper or Periodical Editor,partial
+4413,552314,Statistical Clerk,partial
+4413,561911,Classified Advertising Clerk,partial
+4413,561999,Clerical and Office Support Workers nec,partial
+4413,599913,Proof Reader,partial
+4413,599999,Clerical and Administrative Workers nec,partial
+4413,631112,Office Cashier,partial
+4414,552314,Statistical Clerk,partial
+4414,561911,Classified Advertising Clerk,partial
+4414,561999,Clerical and Office Support Workers nec,partial
+4414,599999,Clerical and Administrative Workers nec,partial
+4414,631112,Office Cashier,partial
+4415,561311,Filing or Registry Clerk,partial
+4416,599411,Human Resource Clerk,partial
+4419,552314,Statistical Clerk,partial
+4419,561911,Classified Advertising Clerk,partial
+4419,561999,Clerical and Office Support Workers nec,partial
+4419,599999,Clerical and Administrative Workers nec,partial
+4419,631112,Office Cashier,partial
+5111,451711,Flight Attendant,exact
+5111,451799,Travel Attendants nec,exact
+5112,599599,Inspectors and Regulatory Officers nec,partial
+5112,639412,Transport Conductor,partial
+5112,899917,Railways Assistant,partial
+5113,451411,Gallery or Museum Guide,exact
+5113,451412,Tour Guide,exact
+5120,351411,Cook,exact
+5131,431211,Cafe Worker,partial
+5131,431511,Waiter,partial
+5131,621511,Retail Supervisor,partial
+5132,431111,Bar Attendant,partial
+5132,431112,Barista,exact
+5141,391111,Hairdresser,partial
+5142,399514,Make Up Artist,exact
+5142,451111,Beauty Therapist,partial
+5142,451512,Weight Loss Consultant,exact
+5142,451812,Hair or Beauty Salon Assistant,exact
+5142,621111,Sales Assistant (General),partial
+5151,431411,Hotel Service Manager,partial
+5151,811211,Commercial Cleaner,partial
+5151,811411,Commercial Housekeeper,partial
+5152,141911,Bed and Breakfast Operator,exact
+5152,451899,Personal Service Workers nec,partial
+5152,811412,Domestic Housekeeper,exact
+5153,899111,Caretaker,exact
+5161,451899,Personal Service Workers nec,partial
+5162,451899,Personal Service Workers nec,partial
+5163,451311,Funeral Director,exact
+5163,451399,Funeral Workers nec,exact
+5163,731199,Automobile Drivers nec,partial
+5164,361111,Dog Handler or Trainer,exact
+5164,361112,Horse Trainer,exact
+5164,361113,Pet Groomer,exact
+5164,361114,Zookeeper,exact
+5164,361115,Kennel Hand,exact
+5164,361199,Animal Attendants and Trainers nec,partial
+5164,361311,Veterinary Nurse,partial
+5165,451211,Driving Instructor,exact
+5169,431999,Hospitality Workers nec,partial
+5169,451811,Civil Celebrant,exact
+5169,451813,Sex Worker or Escort,exact
+5169,451815,First Aid Trainer,exact
+5169,451899,Personal Service Workers nec,partial
+5211,621711,Cash Van Salesperson,partial
+5211,621713,Street Vendor,partial
+5212,621711,Cash Van Salesperson,partial
+5212,621713,Street Vendor,partial
+5221,141111,Cafe or Restaurant Manager,partial
+5221,142111,Retail Manager (General),partial
+5221,142112,Antique Dealer,partial
+5221,142113,Betting Agency Manager,partial
+5221,142114,Hair or Beauty Salon Manager,partial
+5221,142115,Post Office Manager,partial
+5222,621511,Retail Supervisor,partial
+5223,621111,Sales Assistant (General),partial
+5223,621211,ICT Sales Assistant,exact
+5223,621311,Motor Vehicle or Caravan Salesperson,exact
+5223,621312,Motor Vehicle Parts Interpreter / Automotive Parts Salesperson,exact
+5223,621411,Pharmacy Sales Assistant,exact
+5230,631111,Checkout Operator,partial
+5230,631112,Office Cashier,partial
+5230,639411,Ticket Seller,partial
+5230,899711,Vending Machine Attendant,partial
+5230,899921,Ticket Collector or Usher,partial
+5241,639111,Model,exact
+5242,639112,Sales Demonstrator,exact
+5243,621712,Door-to-door Salesperson,exact
+5244,639311,Telemarketer,exact
+5245,621611,Service Station Attendant,exact
+5245,631111,Checkout Operator,partial
+5246,431211,Cafe Worker,partial
+5246,621111,Sales Assistant (General),partial
+5249,621912,Rental Salesperson,exact
+5249,621999,Sales Assistants and Salespersons nec,exact
+5249,639212,Wool Buyer,partial
+5249,639412,Transport Conductor,partial
+5249,639911,Other Sales Support Worker,partial
+5311,411711,Community Worker,partial
+5311,411715,Residential Care Officer,partial
+5311,421111,Child Care Worker,partial
+5311,421112,Family Day Care Worker,partial
+5311,421113,Nanny,exact
+5311,421114,Out of School Hours Care Worker,exact
+5311,422115,Preschool Aide,exact
+5311,423411,Child or Youth Residential Care Assistant,partial
+5311,423412,Hostel Parent,exact
+5312,422111,Aboriginal and Torres Strait Islander Education Worker,exact
+5312,422112,Integration Aide,exact
+5312,422113,Kaiāwhina Kohanga Reo (Māori Language Nest Assistant),exact
+5312,422114,Kaiāwhina Kura Kaupapa Māori (Māori-medium School Assistant),exact
+5312,422116,Teachers' Aide,exact
+5321,423111,Aged or Disabled Carer,partial
+5321,423312,Nursing Support Worker,exact
+5321,423313,Personal Care Assistant,partial
+5322,423111,Aged or Disabled Carer,partial
+5329,311216,Pathology Collector / Phlebotomist,exact
+5329,423211,Dental Assistant,partial
+5329,423311,Hospital Orderly,exact
+5329,451899,Personal Service Workers nec,partial
+5329,711411,Photographic Developer and Printer,partial
+5329,711914,Sterilisation Technician,exact
+5411,441212,Fire Fighter,exact
+5412,441311,Detective,partial
+5412,441312,Police Officer,partial
+5413,442111,Prison Officer,exact
+5414,442211,"Alarm, Security or Surveillance Monitor",exact
+5414,442212,Armoured Car Escort,exact
+5414,442213,Crowd Controller,exact
+5414,442215,Retail Loss Prevention Officer,exact
+5414,442217,Security Officer,partial
+5419,234314,Park Ranger,partial
+5419,441211,Emergency Service Worker,exact
+5419,442216,Security Consultant,partial
+5419,442299,Security Officers and Guards nec,partial
+5419,452414,Lifeguard,exact
+5419,452499,Sportspersons nec,partial
+5419,599517,Train Examiner,partial
+5419,599518,Transport Operations Inspector,partial
+5419,599599,Inspectors and Regulatory Officers nec,partial
+5419,821611,Railway Track Worker,partial
+5419,899913,Crossing Supervisor,exact
+5419,899923,Road Traffic Controller,exact
+6111,121211,Cotton Grower,partial
+6111,121212,Flower Grower,partial
+6111,121213,Fruit or Nut Grower,partial
+6111,121214,"Grain, Oilseed or Pasture Grower  / Field Crop Grower",partial
+6111,121217,Sugar Cane Grower,partial
+6111,121218,Turf Grower,partial
+6111,121221,Vegetable Grower (Aus) / Market Gardener (NZ),partial
+6111,121299,Crop Farmers nec,partial
+6111,841211,Fruit or Nut Farm Worker,partial
+6111,841213,"Grain, Oilseed or Pasture Farm Worker (Aus) / Field Crop Farm Worker (NZ)",partial
+6111,841214,Vegetable Farm Worker (Aus) / Market Garden Worker (NZ),partial
+6111,841299,Crop Farm Workers nec,partial
+6111,841611,Mixed Crop and Livestock Farm Worker,partial
+6112,121212,Flower Grower,partial
+6112,121213,Fruit or Nut Grower,partial
+6112,121215,Grape Grower,partial
+6112,121216,Mixed Crop Farmer,partial
+6112,121218,Turf Grower,partial
+6112,121221,Vegetable Grower (Aus) / Market Gardener (NZ),partial
+6112,121299,Crop Farmers nec,partial
+6112,841211,Fruit or Nut Farm Worker,partial
+6112,841214,Vegetable Farm Worker (Aus) / Market Garden Worker (NZ),partial
+6112,841216,Vineyard Worker,partial
+6112,841299,Crop Farm Workers nec,partial
+6112,841611,Mixed Crop and Livestock Farm Worker,partial
+6113,121212,Flower Grower,partial
+6113,121213,Fruit or Nut Grower,partial
+6113,121216,Mixed Crop Farmer,partial
+6113,121218,Turf Grower,partial
+6113,121221,Vegetable Grower (Aus) / Market Gardener (NZ),partial
+6113,121299,Crop Farmers nec,partial
+6113,362211,Gardener (General),exact
+6113,362212,Arborist,partial
+6113,362213,Landscape Gardener,partial
+6113,362311,Greenkeeper,partial
+6113,362411,Nurseryperson,exact
+6113,841211,Fruit or Nut Farm Worker,partial
+6113,841214,Vegetable Farm Worker (Aus) / Market Garden Worker (NZ),partial
+6114,121212,Flower Grower,partial
+6114,121213,Fruit or Nut Grower,partial
+6114,121216,Mixed Crop Farmer,partial
+6114,121218,Turf Grower,partial
+6114,121221,Vegetable Grower (Aus) / Market Gardener (NZ),partial
+6114,121299,Crop Farmers nec,partial
+6114,121411,Mixed Crop and Livestock Farmer,partial
+6114,841211,Fruit or Nut Farm Worker,partial
+6114,841214,Vegetable Farm Worker (Aus) / Market Garden Worker (NZ),partial
+6114,841299,Crop Farm Workers nec,partial
+6114,841611,Mixed Crop and Livestock Farm Worker,partial
+6121,121312,Beef Cattle Farmer,partial
+6121,121313,Dairy Cattle Farmer,partial
+6121,121314,Deer Farmer,partial
+6121,121315,Goat Farmer,partial
+6121,121316,Horse Breeder,partial
+6121,121317,Mixed Livestock Farmer,partial
+6121,121318,Pig Farmer,partial
+6121,121321,Poultry Farmer,partial
+6121,121322,Sheep Farmer,partial
+6121,121399,Livestock Farmers nec,partial
+6121,361211,Shearer,exact
+6121,841511,Beef Cattle Farm Worker,partial
+6121,841512,Dairy Cattle Farm Worker,partial
+6121,841513,Mixed Livestock Farm Worker,partial
+6121,841514,Poultry Farm Worker,partial
+6121,841515,Sheep Farm Worker,partial
+6121,841516,Stablehand,partial
+6121,841599,Livestock Farm Workers nec,partial
+6122,121321,Poultry Farmer,partial
+6122,841513,Mixed Livestock Farm Worker,partial
+6122,841514,Poultry Farm Worker,partial
+6123,121311,Apiarist,partial
+6123,121314,Deer Farmer,partial
+6123,121317,Mixed Livestock Farmer,partial
+6123,121399,Livestock Farmers nec,partial
+6129,121314,Deer Farmer,partial
+6129,121317,Mixed Livestock Farmer,partial
+6129,121321,Poultry Farmer,partial
+6129,121399,Livestock Farmers nec,partial
+6129,841513,Mixed Livestock Farm Worker,partial
+6129,841514,Poultry Farm Worker,partial
+6130,121216,Mixed Crop Farmer,partial
+6130,121411,Mixed Crop and Livestock Farmer,partial
+6130,841611,Mixed Crop and Livestock Farm Worker,partial
+6210,721112,Logging Plant Operator,partial
+6210,841311,Forestry Worker,partial
+6210,841312,Logging Assistant,partial
+6210,841313,Tree Faller,partial
+6210,899999,Labourers nec,partial
+6221,121111,Aquaculture Farmer,partial
+6221,841111,Aquaculture Worker,partial
+6222,231211,Master Fisher,partial
+6222,899212,Fishing Hand,partial
+6223,231211,Master Fisher,partial
+6223,899212,Fishing Hand,partial
+6224,841911,Hunter-Trapper,partial
+6224,841999,"Farm, Forestry and Garden Workers nec",partial
+7111,133112,Project Builder,partial
+7111,821412,Home Improvement Installer,partial
+7112,331111,Bricklayer,exact
+7113,331112,Stonemason,exact
+7114,332111,Floor Finisher,partial
+7114,821211,Concreter,partial
+7115,331211,Carpenter and Joiner,partial
+7115,331212,Carpenter,exact
+7115,331213,Joiner,exact
+7115,399111,Boat Builder and Repairer,partial
+7115,399112,Shipwright,partial
+7115,399999,Technicians and Trades Workers nec,partial
+7115,821412,Home Improvement Installer,partial
+7119,821412,Home Improvement Installer,partial
+7119,821712,Scaffolder,exact
+7121,333311,Roof Tiler,exact
+7121,334115,Roof Plumber,partial
+7122,332111,Floor Finisher,partial
+7122,333411,Wall and Floor Tiler,exact
+7122,821211,Concreter,partial
+7123,333211,Fibrous Plasterer,exact
+7123,333212,Solid Plasterer,exact
+7124,821411,Building Insulation Installer,partial
+7124,821913,Lagger,exact
+7125,333111,Glazier,exact
+7125,899412,Autoglazier,exact
+7126,334111,Plumber (General),partial
+7126,334112,Airconditioning and Mechanical Services Plumber,exact
+7126,334113,Drainer / Drainlayer,exact
+7126,334114,Gasfitter,partial
+7126,334115,Roof Plumber,partial
+7126,821111,Builder's Labourer,partial
+7127,342111,Airconditioning and Refrigeration Mechanic,exact
+7131,332211,Painting Trades Worker,exact
+7132,324311,Vehicle Painter,exact
+7132,711211,Industrial Spraypainter,exact
+7133,711913,Sand Blaster,partial
+7133,811211,Commercial Cleaner,partial
+7133,811699,Cleaners nec,partial
+7211,322114,Metal Casting Trades Worker,exact
+7212,322311,Metal Fabricator,partial
+7212,322312,Pressure Welder,exact
+7212,322313,Welder (First Class) (Aus) / Welder (NZ),exact
+7212,323213,Fitter-Welder,exact
+7212,712311,Engineering Production Worker,partial
+7213,322211,Sheetmetal Trades Worker,exact
+7213,322311,Metal Fabricator,partial
+7213,323113,Aircraft Maintenance Engineer (Structures),exact
+7213,324111,Panelbeater,exact
+7213,324211,Vehicle Body Builder,exact
+7213,399111,Boat Builder and Repairer,partial
+7213,399999,Technicians and Trades Workers nec,partial
+7213,712311,Engineering Production Worker,partial
+7214,322311,Metal Fabricator,partial
+7214,399112,Shipwright,partial
+7214,821714,Structural Steel Erector,exact
+7215,399111,Boat Builder and Repairer,partial
+7215,399112,Shipwright,partial
+7215,399999,Technicians and Trades Workers nec,partial
+7215,821711,Construction Rigger,exact
+7221,322111,Blacksmith,exact
+7221,322113,Farrier,exact
+7222,323312,Gunsmith,exact
+7222,323313,Locksmith,exact
+7222,323315,Saw Doctor,partial
+7222,323411,Engineering Patternmaker,exact
+7222,323412,Toolmaker,exact
+7223,323211,Fitter (General),partial
+7223,323212,Fitter and Turner,exact
+7223,323214,Metal Machinist (First Class),exact
+7223,712311,Engineering Production Worker,partial
+7224,322115,Metal Polisher,exact
+7224,323315,Saw Doctor,partial
+7224,712311,Engineering Production Worker,partial
+7231,321211,Motor Mechanic (General),partial
+7231,321212,Diesel Motor Mechanic,partial
+7231,321213,Motorcycle Mechanic,exact
+7231,321214,Small Engine Mechanic,partial
+7231,899411,Motor Vehicle Parts and Accessories Fitter (General),exact
+7231,899413,Exhaust and Muffler Repairer,exact
+7231,899414,Radiator Repairer,exact
+7231,899415,Tyre Fitter,exact
+7232,323111,Aircraft Maintenance Engineer (Avionics),partial
+7232,323112,Aircraft Maintenance Engineer (Mechanical),partial
+7233,323211,Fitter (General),partial
+7233,323215,"Textile, Clothing and Footwear Mechanic",exact
+7233,323299,Metal Fitters and Machinists nec,partial
+7233,399999,Technicians and Trades Workers nec,partial
+7234,399999,Technicians and Trades Workers nec,partial
+7234,899911,Bicycle Mechanic,exact
+7311,323314,Precision Instrument Maker and Repairer,exact
+7311,323316,Watch and Clock Maker and Repairer,exact
+7312,399515,Musical Instrument Maker or Repairer,exact
+7313,399411,Jeweller,exact
+7314,211412,Potter or Ceramic Artist,partial
+7315,399914,Optical Mechanic,partial
+7315,399999,Technicians and Trades Workers nec,partial
+7316,323311,Engraver,exact
+7316,399611,Signwriter,exact
+7317,211499,Visual Arts and Crafts Professionals nec,partial
+7317,394299,Wood Machinists and Other Wood Trades Workers nec,exact
+7318,211499,Visual Arts and Crafts Professionals nec,partial
+7319,211499,Visual Arts and Crafts Professionals nec,partial
+7321,392211,Graphic Pre-press Trades Worker,exact
+7322,392112,Screen Printer,exact
+7322,392311,Printing Machinist,exact
+7322,392312,Small Offset Printer,exact
+7322,899511,Printer's Assistant,exact
+7323,392111,Print Finisher,exact
+7323,899512,Printing Table Worker,exact
+7411,341111,Electrician (General),partial
+7411,341112,Electrician (Special Class),partial
+7412,321111,Automotive Electrician,partial
+7412,341111,Electrician (General),partial
+7412,341112,Electrician (Special Class),partial
+7412,341113,Lift Mechanic,exact
+7413,342211,Electrical Linesworker / Electrical Line Mechanic,exact
+7413,342212,Technical Cable Jointer,exact
+7421,323111,Aircraft Maintenance Engineer (Avionics),partial
+7421,323112,Aircraft Maintenance Engineer (Mechanical),partial
+7421,342311,Business Machine Mechanic,exact
+7421,342313,Electronic Equipment Trades Worker,exact
+7421,342314,Electronic Instrument Trades Worker (General),exact
+7421,342315,Electronic Instrument Trades Worker (Special Class),exact
+7422,313111,Hardware Technician,exact
+7422,313199,ICT Support Technicians nec,partial
+7422,342411,Cabler (Data and Telecommunications),exact
+7422,342412,Telecommunications Cable Jointer,exact
+7422,342413,Telecommunications Linesworker / Telecommunications Line Mechanic,exact
+7422,342414,Telecommunications Technician,exact
+7511,351211,Butcher or Smallgoods Maker,exact
+7511,831211,Meat Boner and Slicer,exact
+7511,831212,Slaughterer,exact
+7511,831311,Meat Process Worker,partial
+7511,831312,Poultry Process Worker,partial
+7511,831313,Seafood Process Worker,partial
+7512,351111,Baker,exact
+7512,351112,Pastrycook,exact
+7512,831113,Confectionery Maker,partial
+7513,831114,Dairy Products Maker,partial
+7513,831199,Food and Drink Factory Workers nec,partial
+7514,831114,Dairy Products Maker,partial
+7514,831199,Food and Drink Factory Workers nec,partial
+7515,831114,Dairy Products Maker,partial
+7515,831199,Food and Drink Factory Workers nec,partial
+7515,839312,Product Grader,partial
+7515,839313,Product Tester,partial
+7516,831114,Dairy Products Maker,partial
+7516,831199,Food and Drink Factory Workers nec,partial
+7521,711313,Sawmilling Operator,partial
+7521,711314,Other Wood Processing Machine Operator,partial
+7521,712999,Stationary Plant Operators nec,partial
+7522,394111,Cabinetmaker,partial
+7522,394211,Furniture Finisher,exact
+7522,394212,Picture Framer,exact
+7523,394213,Wood Machinist,exact
+7523,394214,Wood Turner,exact
+7531,393213,Dressmaker or Tailor,exact
+7531,393299,Clothing Trades Workers nec,partial
+7532,393211,Apparel Cutter,exact
+7532,393212,Clothing Patternmaker,exact
+7532,393299,Clothing Trades Workers nec,partial
+7533,393111,Canvas Goods Fabricator,exact
+7533,393112,Leather Goods Maker,partial
+7533,393113,Sail Maker,exact
+7534,324212,Vehicle Trimmer,exact
+7534,393311,Upholsterer,exact
+7535,399999,Technicians and Trades Workers nec,partial
+7535,711711,Footwear Production Machine Operator,partial
+7535,711712,Hide and Skin Processing Machine Operator,partial
+7535,711713,Knitting Machine Operator,partial
+7535,711714,Textile Dyeing and Finishing Machine Operator,partial
+7535,711715,Weaving Machine Operator,partial
+7535,711716,Yarn Carding and Spinning Machine Operator,partial
+7535,711799,Textile and Footwear Production Machine Operators nec,partial
+7535,839212,Rubber Factory Worker,partial
+7535,839913,Clay Processing Factory Worker,partial
+7535,839915,Footwear Factory Worker,partial
+7535,839917,Hide and Skin Processing Worker,partial
+7535,839999,Factory Process Workers nec,partial
+7536,393112,Leather Goods Maker,partial
+7536,393114,Shoemaker,exact
+7541,399911,Diver,exact
+7542,712213,Shot Firer,exact
+7543,399917,Wool Classer,exact
+7543,399999,Technicians and Trades Workers nec,partial
+7543,839311,Product Examiner,exact
+7543,839312,Product Grader,partial
+7543,839313,Product Tester,partial
+7544,841911,Hunter-Trapper,partial
+7544,841913,Pest Controller,exact
+7544,841999,"Farm, Forestry and Garden Workers nec",partial
+7549,362111,Florist,exact
+7549,399914,Optical Mechanic,partial
+7549,399999,Technicians and Trades Workers nec,partial
+8111,712211,Driller,partial
+8111,712212,Miner,exact
+8112,712913,Cement Production Plant Operator,partial
+8112,712999,Stationary Plant Operators nec,partial
+8113,712211,Driller,partial
+8114,711112,Concrete Products Machine Operator,exact
+8114,711114,Stone Processing Machine Operator,exact
+8114,711199,"Clay, Concrete, Glass and Stone Processing Machine Operators nec",partial
+8114,711912,Motion Picture Projectionist,partial
+8114,711999,Machine Operators nec,partial
+8114,712913,Cement Production Plant Operator,partial
+8114,712914,Concrete Batching Plant Operator,exact
+8114,712915,Concrete Pump Operator,exact
+8114,712999,Stationary Plant Operators nec,partial
+8121,712311,Engineering Production Worker,partial
+8122,322112,Electroplater,exact
+8122,711913,Sand Blaster,partial
+8122,712311,Engineering Production Worker,partial
+8131,711911,Chemical Production Machine Operator,exact
+8132,399915,Photographer's Assistant,partial
+8132,711199,"Clay, Concrete, Glass and Stone Processing Machine Operators nec",partial
+8132,711411,Photographic Developer and Printer,partial
+8132,711912,Motion Picture Projectionist,partial
+8132,711999,Machine Operators nec,partial
+8141,711516,Rubber Production Machine Operator,exact
+8142,399111,Boat Builder and Repairer,partial
+8142,399999,Technicians and Trades Workers nec,partial
+8142,711511,Plastic Cablemaking Machine Operator,exact
+8142,711512,Plastic Compounding and Reclamation Machine Operator,exact
+8142,711513,Plastics Fabricator or Welder,exact
+8142,711514,Plastics Production Machine Operator (General),exact
+8142,711515,Reinforced Plastic and Composite Production Worker,exact
+8142,711599,Plastics and Rubber Production Machine Operators nec,exact
+8143,711311,Paper Products Machine Operator,partial
+8143,712916,Paper and Pulp Mill Operator,partial
+8151,711711,Footwear Production Machine Operator,partial
+8151,711712,Hide and Skin Processing Machine Operator,partial
+8151,711713,Knitting Machine Operator,partial
+8151,711714,Textile Dyeing and Finishing Machine Operator,partial
+8151,711715,Weaving Machine Operator,partial
+8151,711716,Yarn Carding and Spinning Machine Operator,partial
+8151,711799,Textile and Footwear Production Machine Operators nec,partial
+8152,711711,Footwear Production Machine Operator,partial
+8152,711712,Hide and Skin Processing Machine Operator,partial
+8152,711713,Knitting Machine Operator,partial
+8152,711714,Textile Dyeing and Finishing Machine Operator,partial
+8152,711715,Weaving Machine Operator,partial
+8152,711716,Yarn Carding and Spinning Machine Operator,partial
+8152,711799,Textile and Footwear Production Machine Operators nec,partial
+8153,711611,Sewing Machinist,exact
+8154,711711,Footwear Production Machine Operator,partial
+8154,711712,Hide and Skin Processing Machine Operator,partial
+8154,711713,Knitting Machine Operator,partial
+8154,711714,Textile Dyeing and Finishing Machine Operator,partial
+8154,711715,Weaving Machine Operator,partial
+8154,711716,Yarn Carding and Spinning Machine Operator,partial
+8154,711799,Textile and Footwear Production Machine Operators nec,partial
+8155,711711,Footwear Production Machine Operator,partial
+8155,711712,Hide and Skin Processing Machine Operator,partial
+8155,711713,Knitting Machine Operator,partial
+8155,711714,Textile Dyeing and Finishing Machine Operator,partial
+8155,711715,Weaving Machine Operator,partial
+8155,711716,Yarn Carding and Spinning Machine Operator,partial
+8155,711799,Textile and Footwear Production Machine Operators nec,partial
+8156,711711,Footwear Production Machine Operator,partial
+8156,711712,Hide and Skin Processing Machine Operator,partial
+8156,711713,Knitting Machine Operator,partial
+8156,711714,Textile Dyeing and Finishing Machine Operator,partial
+8156,711715,Weaving Machine Operator,partial
+8156,711716,Yarn Carding and Spinning Machine Operator,partial
+8156,711799,Textile and Footwear Production Machine Operators nec,partial
+8157,811511,Laundry Worker (General),partial
+8157,811512,Drycleaner,partial
+8157,811513,Ironer or Presser,partial
+8159,711711,Footwear Production Machine Operator,partial
+8159,711712,Hide and Skin Processing Machine Operator,partial
+8159,711713,Knitting Machine Operator,partial
+8159,711714,Textile Dyeing and Finishing Machine Operator,partial
+8159,711715,Weaving Machine Operator,partial
+8159,711716,Yarn Carding and Spinning Machine Operator,partial
+8159,711799,Textile and Footwear Production Machine Operators nec,partial
+8160,831111,Baking Factory Worker,exact
+8160,831112,Brewery Worker,exact
+8160,831113,Confectionery Maker,partial
+8160,831114,Dairy Products Maker,partial
+8160,831115,Fruit and Vegetable Factory Worker,exact
+8160,831116,Grain Mill Worker,exact
+8160,831117,Sugar Mill Worker,exact
+8160,831118,Winery Cellar Hand,exact
+8160,831199,Food and Drink Factory Workers nec,partial
+8160,831311,Meat Process Worker,partial
+8160,831312,Poultry Process Worker,partial
+8160,831313,Seafood Process Worker,partial
+8171,711311,Paper Products Machine Operator,partial
+8171,712916,Paper and Pulp Mill Operator,partial
+8172,711313,Sawmilling Operator,partial
+8172,711314,Other Wood Processing Machine Operator,partial
+8172,712999,Stationary Plant Operators nec,partial
+8181,711111,Clay Products Machine Operator,exact
+8181,711113,Glass Production Machine Operator,exact
+8182,712911,Boiler or Engine Operator,exact
+8183,832111,Chocolate Packer,partial
+8183,832112,Container Filler,partial
+8183,832113,Fruit and Vegetable Packer,partial
+8183,832114,Meat Packer,partial
+8183,832115,Seafood Packer,partial
+8183,832199,Packers nec,partial
+8189,711199,"Clay, Concrete, Glass and Stone Processing Machine Operators nec",partial
+8189,711912,Motion Picture Projectionist,partial
+8189,711999,Machine Operators nec,partial
+8189,712913,Cement Production Plant Operator,partial
+8189,712999,Stationary Plant Operators nec,partial
+8189,721912,Linemarker,exact
+8211,832211,Product Assembler,partial
+8212,832211,Product Assembler,partial
+8219,832211,Product Assembler,partial
+8311,731311,Train Driver,partial
+8312,712917,Railway Signal Operator,partial
+8312,712918,Train Controller,exact
+8321,561211,Courier,partial
+8321,732111,Delivery Driver,partial
+8322,411111,Ambulance Officer,partial
+8322,561211,Courier,partial
+8322,561212,Postal Delivery Officer,partial
+8322,731111,Chauffeur,exact
+8322,731112,Taxi Driver,exact
+8322,731199,Automobile Drivers nec,partial
+8322,732111,Delivery Driver,partial
+8331,731211,Bus Driver,exact
+8331,731212,Charter and Tour Bus Driver,exact
+8331,731213,Passenger Coach Driver,exact
+8331,731312,Tram Driver,exact
+8332,733111,Truck Driver (General),partial
+8332,733112,Aircraft Refueller,partial
+8332,733113,Furniture Removalist,exact
+8332,733114,Tanker Driver,exact
+8332,733115,Tow Truck Driver,exact
+8341,721111,Agricultural and Horticultural Mobile Plant Operator,exact
+8341,721112,Logging Plant Operator,partial
+8341,841312,Logging Assistant,partial
+8341,841313,Tree Faller,partial
+8342,721211,Earthmoving Plant Operator (General),partial
+8342,721212,Backhoe Operator,exact
+8342,721213,Bulldozer Operator,exact
+8342,721214,Excavator Operator,exact
+8342,721215,Grader Operator,exact
+8342,721216,Loader Operator,exact
+8342,721913,Paving Plant Operator,exact
+8342,721914,Railway Track Plant Operator,exact
+8342,721915,Road Roller Operator,exact
+8342,721916,Streetsweeper Operator,exact
+8342,721999,Mobile Plant Operators nec,partial
+8342,733112,Aircraft Refueller,partial
+8343,712111,"Crane, Hoist or Lift Operator",exact
+8343,721999,Mobile Plant Operators nec,partial
+8343,891113,Waterside Worker,partial
+8344,721311,Forklift Driver,exact
+8350,899211,Deck Hand,exact
+9111,811311,Domestic Cleaner,exact
+9112,431911,Bar Useful or Busser,exact
+9112,811211,Commercial Cleaner,partial
+9112,811411,Commercial Housekeeper,partial
+9121,811511,Laundry Worker (General),partial
+9121,811512,Drycleaner,partial
+9121,811513,Ironer or Presser,partial
+9122,811111,Car Detailer,exact
+9123,811612,Window Cleaner,exact
+9129,811611,Carpet Cleaner,exact
+9129,811699,Cleaners nec,partial
+9129,899999,Labourers nec,partial
+9211,841211,Fruit or Nut Farm Worker,partial
+9211,841212,Fruit or Nut Picker,partial
+9211,841213,"Grain, Oilseed or Pasture Farm Worker (Aus) / Field Crop Farm Worker (NZ)",partial
+9211,841214,Vegetable Farm Worker (Aus) / Market Garden Worker (NZ),partial
+9211,841215,Vegetable Picker,exact
+9211,841216,Vineyard Worker,partial
+9211,841217,Mushroom Picker,exact
+9211,841299,Crop Farm Workers nec,partial
+9211,841999,"Farm, Forestry and Garden Workers nec",partial
+9212,841511,Beef Cattle Farm Worker,partial
+9212,841512,Dairy Cattle Farm Worker,partial
+9212,841513,Mixed Livestock Farm Worker,partial
+9212,841514,Poultry Farm Worker,partial
+9212,841515,Sheep Farm Worker,partial
+9212,841516,Stablehand,partial
+9212,841517,Wool Handler,exact
+9212,841599,Livestock Farm Workers nec,partial
+9213,841611,Mixed Crop and Livestock Farm Worker,partial
+9214,841411,Garden Labourer,exact
+9214,841412,Horticultural Nursery Assistant,exact
+9214,841999,"Farm, Forestry and Garden Workers nec",partial
+9215,841311,Forestry Worker,partial
+9215,841312,Logging Assistant,partial
+9215,841999,"Farm, Forestry and Garden Workers nec",partial
+9216,841111,Aquaculture Worker,partial
+9311,821912,Driller's Assistant,exact
+9311,821914,Mining Support Worker,exact
+9312,821112,"Drainage, Sewerage and Stormwater Labourer",exact
+9312,821113,Earthmoving Labourer,exact
+9312,821511,Paving and Surfacing Labourer,exact
+9312,821611,Railway Track Worker,partial
+9312,821915,Surveyor's Assistant,partial
+9313,332111,Floor Finisher,partial
+9313,821111,Builder's Labourer,partial
+9313,821114,Plumber's Assistant,exact
+9313,821211,Concreter,partial
+9313,821311,Fencer,exact
+9313,821412,Home Improvement Installer,partial
+9313,821713,Steel Fixer,exact
+9313,821911,Crane Chaser,exact
+9313,899914,Electrical or Telecommunications Trades Assistant,exact
+9321,832111,Chocolate Packer,partial
+9321,832112,Container Filler,partial
+9321,832113,Fruit and Vegetable Packer,partial
+9321,832114,Meat Packer,partial
+9321,832115,Seafood Packer,partial
+9321,832199,Packers nec,partial
+9329,741111,Storeperson,partial
+9329,839111,Metal Engineering Process Worker,exact
+9329,839211,Plastics Factory Worker,exact
+9329,839212,Rubber Factory Worker,partial
+9329,839411,Paper and Pulp Mill Worker,exact
+9329,839412,Sawmill or Timber Yard Worker,exact
+9329,839413,Wood and Wood Products Factory Worker,exact
+9329,839911,Cement and Concrete Plant Worker,exact
+9329,839912,Chemical Plant Worker,exact
+9329,839913,Clay Processing Factory Worker,partial
+9329,839914,Fabric and Textile Factory Worker,exact
+9329,839915,Footwear Factory Worker,partial
+9329,839916,Glass Processing Worker,exact
+9329,839917,Hide and Skin Processing Worker,partial
+9329,839999,Factory Process Workers nec,partial
+9331,561211,Courier,partial
+9331,732111,Delivery Driver,partial
+9332,899999,Labourers nec,partial
+9333,712912,Bulk Materials Handling Plant Operator,exact
+9333,721911,Aircraft Baggage Handler and Airline Ground Crew,exact
+9333,721999,Mobile Plant Operators nec,partial
+9333,741111,Storeperson,partial
+9333,891111,Freight Handler (Rail or Road),exact
+9333,891112,Truck Driver's Offsider,exact
+9333,891113,Waterside Worker,partial
+9334,891211,Shelf Filler,exact
+9411,851111,Fast Food Cook,exact
+9412,851211,Pastrycook's Assistant,exact
+9412,851299,Food Trades Assistants nec,exact
+9412,851311,Kitchenhand,partial
+9510,899999,Labourers nec,partial
+9520,621711,Cash Van Salesperson,partial
+9520,621713,Street Vendor,partial
+9611,899611,Recycling or Rubbish Collector,exact
+9612,621911,Materials Recycler,exact
+9612,839918,Recycling Worker,exact
+9613,811699,Cleaners nec,partial
+9621,431912,Doorperson or Luggage Porter,exact
+9621,561211,Courier,partial
+9621,732111,Delivery Driver,partial
+9621,899915,Leaflet or Newspaper Deliverer,exact
+9622,899311,Handyperson,exact
+9623,561912,Meter Reader,exact
+9623,899711,Vending Machine Attendant,partial
+9624,841911,Hunter-Trapper,partial
+9624,841999,"Farm, Forestry and Garden Workers nec",partial
+9629,431999,Hospitality Workers nec,partial
+9629,639411,Ticket Seller,partial
+9629,899912,Car Park Attendant,exact
+9629,899916,Mechanic's Assistant,exact
+9629,899917,Railways Assistant,partial
+9629,899918,Sign Erector,exact
+9629,899921,Ticket Collector or Usher,partial
+9629,899922,Trolley Collector,exact
+9629,899999,Labourers nec,partial
