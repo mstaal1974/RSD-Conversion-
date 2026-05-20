@@ -68,6 +68,8 @@ CREATE TABLE IF NOT EXISTS rsd_skill_records (
     bart_temperature REAL,
     keywords         TEXT,
     error_message    TEXT,
+    qa_pc_cosine     REAL,
+    qa_pc_cosine_pass BOOLEAN,
     created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (run_id, row_index)
 );
@@ -85,7 +87,12 @@ def init_db(engine: Engine) -> None:
                 conn.execute(text(stmt))
 
         # Migrations — safe to run on existing databases
-        for col, defn in [("tp_code", "TEXT"), ("tp_title", "TEXT")]:
+        for col, defn in [
+            ("tp_code", "TEXT"),
+            ("tp_title", "TEXT"),
+            ("qa_pc_cosine", "REAL"),
+            ("qa_pc_cosine_pass", "BOOLEAN"),
+        ]:
             conn.execute(text(f"""
             DO $$
             BEGIN
@@ -192,6 +199,10 @@ def upsert_skill_records(
                 bart_temperature=float(r.get("bart_temperature", 0.2)),
                 keywords=str(r.get("keywords", "") or ""),
                 error_message=str(r.get("error_message", "") or ""),
+                qa_pc_cosine=(
+                    float(r["qa_pc_cosine"]) if r.get("qa_pc_cosine") is not None else None
+                ),
+                qa_pc_cosine_pass=bool(r.get("qa_pc_cosine_pass", True)),
             )
         )
 
@@ -204,26 +215,28 @@ def upsert_skill_records(
                          pcs_text, tp_code, tp_title, skill_statement, bart_prompt,
                          qa_one_sentence, qa_word_count, qa_has_method, qa_has_outcome,
                          qa_passes, rewrite_count, bart_model, bart_temperature,
-                         keywords, error_message)
+                         keywords, error_message, qa_pc_cosine, qa_pc_cosine_pass)
                     VALUES
                         (:run_id, :row_index, :unit_code, :unit_title, :element_title,
                          :pcs_text, :tp_code, :tp_title, :skill_statement, :bart_prompt,
                          :qa_one_sentence, :qa_word_count, :qa_has_method, :qa_has_outcome,
                          :qa_passes, :rewrite_count, :bart_model, :bart_temperature,
-                         :keywords, :error_message)
+                         :keywords, :error_message, :qa_pc_cosine, :qa_pc_cosine_pass)
                     ON CONFLICT (run_id, row_index) DO UPDATE SET
-                        skill_statement  = EXCLUDED.skill_statement,
-                        bart_prompt      = EXCLUDED.bart_prompt,
-                        qa_one_sentence  = EXCLUDED.qa_one_sentence,
-                        qa_word_count    = EXCLUDED.qa_word_count,
-                        qa_has_method    = EXCLUDED.qa_has_method,
-                        qa_has_outcome   = EXCLUDED.qa_has_outcome,
-                        qa_passes        = EXCLUDED.qa_passes,
-                        rewrite_count    = EXCLUDED.rewrite_count,
-                        bart_model       = EXCLUDED.bart_model,
-                        bart_temperature = EXCLUDED.bart_temperature,
-                        keywords         = EXCLUDED.keywords,
-                        error_message    = EXCLUDED.error_message
+                        skill_statement   = EXCLUDED.skill_statement,
+                        bart_prompt       = EXCLUDED.bart_prompt,
+                        qa_one_sentence   = EXCLUDED.qa_one_sentence,
+                        qa_word_count     = EXCLUDED.qa_word_count,
+                        qa_has_method     = EXCLUDED.qa_has_method,
+                        qa_has_outcome    = EXCLUDED.qa_has_outcome,
+                        qa_passes         = EXCLUDED.qa_passes,
+                        rewrite_count     = EXCLUDED.rewrite_count,
+                        bart_model        = EXCLUDED.bart_model,
+                        bart_temperature  = EXCLUDED.bart_temperature,
+                        keywords          = EXCLUDED.keywords,
+                        error_message     = EXCLUDED.error_message,
+                        qa_pc_cosine      = EXCLUDED.qa_pc_cosine,
+                        qa_pc_cosine_pass = EXCLUDED.qa_pc_cosine_pass
                 """),
                 row,
             )

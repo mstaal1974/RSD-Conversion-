@@ -15,6 +15,7 @@ psycopg[binary]>=3.2,<4.0
 # Semantic analysis
 scikit-learn>=1.4,<2.0
 numpy>=1.26,<3.0
+hdbscan>=0.8.33,<1.0
 # ESCO local matcher — sentence-transformers/all-MiniLM-L6-v2 (384 dim, English).
 # Pulls torch (CPU) and transformers; ~750 MB image-size impact.
 sentence-transformers>=2.5,<4.0

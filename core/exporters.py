@@ -11,6 +11,7 @@ Matches the example_output_from_Analysis.xlsx format:
   QA Pass     = boolean
 """
 from __future__ import annotations
+import numpy as np
 import pandas as pd
 
 
@@ -20,6 +21,11 @@ def _get(df: pd.DataFrame, *candidates: str, default: str = "") -> pd.Series:
         if col in df.columns:
             return df[col]
     return pd.Series([default] * len(df), dtype=str)
+
+
+def _str_col(df: pd.DataFrame, *candidates: str) -> pd.Series:
+    """Like _get but normalised: NaN → '', stripped, str dtype."""
+    return _get(df, *candidates).fillna("").astype(str).str.strip()
 
 
 def _build_unit_codes(df: pd.DataFrame) -> pd.Series:
@@ -98,6 +104,10 @@ def to_osmt_rows(df: pd.DataFrame, author: str = "") -> pd.DataFrame:
     OSMT batch import format.
     RSD Name = element title (not unit code) to match OSMT naming convention.
     Standards = unit code dot element number for traceability.
+
+    Auto-populated when the source dataframe carries:
+      esco_skill_title / esco_skill_uri   → Alignment {Name, URL, Framework}
+      anzsco_code / anzsco_title          → Alignment 2 + Occupation Major / Minor Groups
     """
     if df is None or len(df) == 0:
         return pd.DataFrame(columns=_OSMT_COLUMNS)
@@ -108,33 +118,91 @@ def to_osmt_rows(df: pd.DataFrame, author: str = "") -> pd.DataFrame:
     out["Skill Statement"] = _get(df, "skill_statement")
     out["Categories"]      = _get(df, "unit_title")
     out["Keywords"]        = _get(df, "keywords_semicolon", "keywords")
-    out["Standards"]       = _build_unit_codes(df)   # BSBAUD411.1 etc.
+    out["Standards"]       = _build_standards(df)
 
-    for col in [
-        "Certifications", "Occupation Major Groups", "Occupation Minor Groups",
-        "Broad Occupations", "Detailed Occupations", "O*NET Job Codes",
-        "Employers", "Alignment Name", "Alignment URL", "Alignment Framework",
-        "Alignment 2 Name", "Alignment 2 URL", "Alignment 2 Framework",
-    ]:
-        out[col] = ""
+    out["Certifications"]          = ""
+    out["Occupation Major Groups"] = _anzsco_major(df)
+    out["Occupation Minor Groups"] = _anzsco_minor(df)
+    out["Broad Occupations"]       = _anzsco_broad(df)
+    out["Detailed Occupations"]    = _anzsco_detailed(df)
+    out["O*NET Job Codes"]         = ""
+    out["Employers"]               = ""
+
+    # Primary alignment → ESCO skill
+    esco_title = _str_col(df, "esco_skill_title")
+    esco_uri   = _str_col(df, "esco_skill_uri")
+    out["Alignment Name"]      = esco_title
+    out["Alignment URL"]       = esco_uri
+    out["Alignment Framework"] = np.where(esco_uri == "", "", "ESCO v1.2.1")
+
+    # Secondary alignment → ANZSCO occupation (primary on the UOC)
+    anzsco_title = _str_col(df, "anzsco_title")
+    anzsco_code  = _str_col(df, "anzsco_code")
+    out["Alignment 2 Name"]      = anzsco_title
+    out["Alignment 2 URL"]       = np.where(
+        anzsco_code == "", "",
+        "https://www.abs.gov.au/ausstats/abs@.nsf/mf/1220.0?code=" + anzsco_code,
+    )
+    out["Alignment 2 Framework"] = np.where(anzsco_code == "", "", "ANZSCO 2022")
 
     return out[_OSMT_COLUMNS]
 
 
+_TGA_BASE = "https://training.gov.au/Training/Details/"
+
+
+def _build_standards(df: pd.DataFrame) -> pd.Series:
+    """
+    Combine the BSBAUD411.1 reference with a TGA URL for the parent unit.
+    Format: "BSBAUD411.1 (https://training.gov.au/Training/Details/BSBAUD411)"
+    """
+    refs = _build_unit_codes(df)
+    units = _get(df, "unit_code").astype(str).str.strip()
+    urls = units.where(units.eq(""), _TGA_BASE + units)
+    combined = refs + urls.where(urls.eq(""), " (" + urls + ")")
+    return combined
+
+
+def _anzsco_part(df: pd.DataFrame, prefix_len: int) -> pd.Series:
+    """Return the n-digit prefix of anzsco_code as ANZSCO group string, blank if absent."""
+    code = _str_col(df, "anzsco_code")
+    return code.str.slice(0, prefix_len).where(code != "", "")
+
+
+def _anzsco_major(df: pd.DataFrame) -> pd.Series:
+    return _anzsco_part(df, 1)
+
+
+def _anzsco_minor(df: pd.DataFrame) -> pd.Series:
+    return _anzsco_part(df, 2)
+
+
+def _anzsco_broad(df: pd.DataFrame) -> pd.Series:
+    return _anzsco_part(df, 3)
+
+
+def _anzsco_detailed(df: pd.DataFrame) -> pd.Series:
+    return _anzsco_part(df, 4)
+
+
 # ── Traceability ──────────────────────────────────────────────────────────────
+
+_TRACEABILITY_COLUMNS = [
+    "RSD Name", "Unit Code", "Unit Title", "Element",
+    "Performance Criteria", "Skill Statement", "Keywords",
+    "TP Code", "TP Title",
+    "Prompt", "Model", "Temperature",
+    "QA: One Sentence", "QA: Word Count",
+    "QA: Has Method", "QA: Has Outcome",
+    "QA: PC Cosine", "QA: PC Cosine Pass",
+    "QA: Passes", "Rewrites", "Error",
+]
+
 
 def to_traceability(df: pd.DataFrame) -> pd.DataFrame:
     """Full audit trail per element."""
     if df is None or len(df) == 0:
-        return pd.DataFrame(columns=[
-            "RSD Name", "Unit Code", "Unit Title", "Element",
-            "Performance Criteria", "Skill Statement", "Keywords",
-            "TP Code", "TP Title",
-            "Prompt", "Model", "Temperature",
-            "QA: One Sentence", "QA: Word Count",
-            "QA: Has Method", "QA: Has Outcome",
-            "QA: Passes", "Rewrites", "Error",
-        ])
+        return pd.DataFrame(columns=_TRACEABILITY_COLUMNS)
 
     out = pd.DataFrame()
     out["RSD Name"]             = _get(df, "element_title")
@@ -153,6 +221,8 @@ def to_traceability(df: pd.DataFrame) -> pd.DataFrame:
     out["QA: Word Count"]       = _get(df, "qa_word_count")
     out["QA: Has Method"]       = _get(df, "qa_has_method")
     out["QA: Has Outcome"]      = _get(df, "qa_has_outcome")
+    out["QA: PC Cosine"]        = _get(df, "qa_pc_cosine")
+    out["QA: PC Cosine Pass"]   = _get(df, "qa_pc_cosine_pass")
     out["QA: Passes"]           = _get(df, "qa_passes")
     out["Rewrites"]             = _get(df, "rewrite_count")
     out["Error"]                = _get(df, "error_message")
