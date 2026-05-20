@@ -152,6 +152,130 @@ def corpus_anzsco_codes(engine: Engine) -> list[str]:
     return sorted(anzsco_seen)
 
 
+# ── Empirical basis: per-ANZSCO centroid of corpus statement embeddings ──────
+
+import pandas as pd  # local import — top of file already has numpy
+
+
+def build_corpus_index(engine: Engine) -> dict:
+    """
+    Pull every ESCO-matched skill statement in the corpus, encode the
+    statement text with the same MiniLM model the matcher uses, then
+    build a per-ANZSCO weighting that mirrors the contribution score
+    used elsewhere (esco_skill_score × ISCO↔ANZSCO weight, best-of when
+    a statement has multiple ESCO occupations behind it).
+
+    The encode pass is the expensive step (~tens of seconds for a
+    30k-statement corpus). Cache the return value at the page level via
+    @st.cache_resource.
+
+    Returns:
+      {
+        "embeddings":      np.ndarray (n_stmts, 384) L2-normed,
+        "df":              DataFrame of the statements
+                           (id, unit_code, skill_statement, esco_skill_score),
+        "anzsco_to_stmts": dict[anzsco_code, list[(row_idx, weight)]],
+      }
+    """
+    matcher = esco_local.get_matcher()
+    sql = text("""
+        SELECT id, unit_code, skill_statement, esco_skill_score, esco_occupation_uris
+          FROM rsd_skill_records
+         WHERE esco_skill_uri IS NOT NULL
+           AND skill_statement IS NOT NULL AND skill_statement <> ''
+           AND esco_occupation_uris IS NOT NULL AND esco_occupation_uris <> ''
+    """)
+    with engine.connect() as conn:
+        df = pd.read_sql(sql, conn)
+    df = df.reset_index(drop=True)
+
+    empty = {
+        "embeddings": np.zeros((0, 384), dtype=np.float32),
+        "df": df.drop(columns=["esco_occupation_uris"], errors="ignore"),
+        "anzsco_to_stmts": {},
+    }
+    if df.empty:
+        return empty
+
+    texts = df["skill_statement"].fillna("").tolist()
+    embeddings = matcher.model.encode(
+        texts,
+        batch_size=64,
+        normalize_embeddings=True,
+        convert_to_numpy=True,
+        show_progress_bar=False,
+    ).astype(np.float32)
+
+    # Walk statements → ESCO occupation URIs → ISCO → ANZSCO; per (anzsco,
+    # statement) keep the best (esco_score × crosswalk_weight).
+    anzsco_to_stmts: dict[str, dict[int, float]] = defaultdict(dict)
+    occ_uris_col = df["esco_occupation_uris"].fillna("").tolist()
+    scores_col = df["esco_skill_score"].fillna(0.0).astype(float).tolist()
+
+    for i, (uris, esco_score) in enumerate(zip(occ_uris_col, scores_col)):
+        if not uris or esco_score <= 0.0:
+            continue
+        for uri in uris.split("|"):
+            uri = uri.strip()
+            if not uri:
+                continue
+            meta = matcher.occupation_meta(uri)
+            if not meta or not meta.get("isco_group"):
+                continue
+            for anz in anzsco_crosswalk.isco_to_anzsco(meta["isco_group"]):
+                w = esco_score * anz["weight"]
+                code = anz["anzsco_code"]
+                if w > anzsco_to_stmts[code].get(i, 0.0):
+                    anzsco_to_stmts[code][i] = w
+
+    return {
+        "embeddings": embeddings,
+        "df": df.drop(columns=["esco_occupation_uris"], errors="ignore"),
+        "anzsco_to_stmts": {c: list(s.items()) for c, s in anzsco_to_stmts.items()},
+    }
+
+
+def build_empirical_matrix(
+    index: dict, *, min_statements: int = 3,
+) -> tuple[np.ndarray, list[str], list[str], list[int]]:
+    """
+    Per-ANZSCO weighted centroid of corpus skill-statement embeddings.
+
+    Only includes ANZSCO codes backed by at least `min_statements`
+    statements in the corpus.
+
+    Returns (matrix, codes, titles, n_statements_per_code) — last list
+    aligned with codes, for hover labels.
+    """
+    embeddings = index["embeddings"]
+    anzsco_to_stmts = index["anzsco_to_stmts"]
+    if not anzsco_to_stmts or embeddings.shape[0] == 0:
+        return np.zeros((0, 384), dtype=np.float32), [], [], []
+
+    kept_vecs, kept_codes, kept_titles, kept_n = [], [], [], []
+    for code in sorted(anzsco_to_stmts):
+        stmts = anzsco_to_stmts[code]
+        if len(stmts) < min_statements:
+            continue
+        idxs = np.fromiter((s[0] for s in stmts), dtype=np.int64, count=len(stmts))
+        weights = np.fromiter((s[1] for s in stmts), dtype=np.float32, count=len(stmts))
+        vecs = embeddings[idxs]
+        if weights.sum() > 0:
+            cent = (vecs * weights[:, None]).sum(axis=0) / weights.sum()
+        else:
+            cent = vecs.mean(axis=0)
+        n = float(np.linalg.norm(cent))
+        cent = (cent / n).astype(np.float32) if n > 0 else cent.astype(np.float32)
+        kept_vecs.append(cent)
+        kept_codes.append(code)
+        kept_titles.append(anzsco_crosswalk.title_for_anzsco(code))
+        kept_n.append(len(stmts))
+
+    if not kept_vecs:
+        return np.zeros((0, 384), dtype=np.float32), [], [], []
+    return np.vstack(kept_vecs), kept_codes, kept_titles, kept_n
+
+
 # ── Dim reduction ─────────────────────────────────────────────────────────────
 
 def reduce_dims(matrix: np.ndarray, *, n_components: int = 2,

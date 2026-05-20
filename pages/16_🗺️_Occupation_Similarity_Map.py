@@ -39,29 +39,73 @@ engine = get_engine()
 # ── Controls ──────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.header("Map")
-    scope = st.radio(
-        "Occupations to plot",
-        ["Corpus only", "All ANZSCO"],
+    basis = st.radio(
+        "Similarity basis",
+        ["ESCO skills (taxonomic)", "Corpus statements (empirical)"],
         help=(
-            "**Corpus only**: ANZSCO occupations reachable from your ESCO-matched "
-            "statements (typically tens to low-hundreds — fast).\n\n"
-            "**All ANZSCO**: every ANZSCO in the crosswalk (~1.1k — first build "
-            "takes 30-60s, then cached)."
+            "**ESCO**: occupation centroid = average of MiniLM embeddings of "
+            "its ESCO essential/optional skills. Taxonomy-anchored, works for "
+            "every ANZSCO regardless of corpus coverage.\n\n"
+            "**Corpus**: occupation centroid = weighted average of MiniLM "
+            "embeddings of your actual `rsd_skill_records.skill_statement` texts "
+            "that map to it (weights = esco_score × crosswalk_weight). Reflects "
+            "how your TPs actually teach the occupation — only covers ANZSCOs "
+            "with corpus statements behind them."
         ),
     )
+    is_empirical = basis.startswith("Corpus")
+
+    if not is_empirical:
+        scope = st.radio(
+            "Occupations to plot",
+            ["Corpus only", "All ANZSCO"],
+            help=(
+                "**Corpus only**: ANZSCO occupations reachable from your "
+                "ESCO-matched statements (fast).\n\n"
+                "**All ANZSCO**: every ANZSCO in the crosswalk (~1.1k — first "
+                "build takes 30-60s, then cached)."
+            ),
+        )
+        min_stmts = 1
+    else:
+        scope = "Corpus only"
+        min_stmts = st.slider(
+            "Min supporting statements per occupation",
+            1, 20, 3,
+            help="Hide ANZSCOs backed by fewer corpus statements than this — "
+                 "noisy centroids from 1-2 statements aren't trustworthy.",
+        )
+
     n_dim = st.radio("Dimensions", [2, 3], horizontal=True, index=0)
     point_size = st.slider("Point size", 4, 16, 8)
 
 
 # ── Build embedding matrix ────────────────────────────────────────────────────
 @st.cache_data(show_spinner=False)
-def _build_matrix(scope_label: str, corpus_codes_tuple: tuple):
+def _build_matrix_esco(scope_label: str, corpus_codes_tuple: tuple):
     if scope_label == "Corpus only":
         codes = list(corpus_codes_tuple)
     else:
         df = anzsco_crosswalk._load()
         codes = sorted(df["anzsco_code"].drop_duplicates().tolist())
-    return sim.build_embedding_matrix(codes)
+    matrix, kept_codes, kept_titles = sim.build_embedding_matrix(codes)
+    # Pad with empty n_statements for shape compatibility downstream
+    return matrix, kept_codes, kept_titles, [0] * len(kept_codes)
+
+
+@st.cache_resource(show_spinner=False)
+def _get_corpus_index(_engine):
+    """Encode every ESCO-matched skill statement once per session.
+    @st.cache_resource doesn't hash args, so the engine identity is fine."""
+    return sim.build_corpus_index(_engine)
+
+
+@st.cache_data(show_spinner=False)
+def _build_matrix_empirical(min_statements: int, _index_id: int):
+    """min_statements is part of the cache key; _index_id pins us to a
+    specific corpus index (id() of the cached dict)."""
+    index = _get_corpus_index(engine)
+    return sim.build_empirical_matrix(index, min_statements=min_statements)
 
 
 @st.cache_data(show_spinner=False)
@@ -70,20 +114,32 @@ def _project(matrix_bytes: bytes, shape: tuple, n_dim: int):
     return sim.reduce_dims(m, n_components=n_dim)
 
 
-corpus_codes_tuple: tuple = ()
-if scope == "Corpus only":
-    with st.spinner("Finding ANZSCO occupations touched by your corpus…"):
-        corpus_codes_tuple = tuple(sim.corpus_anzsco_codes(engine))
-
-with st.spinner(f"Building skill-centroid embeddings ({scope})…"):
-    matrix, codes, titles = _build_matrix(scope, corpus_codes_tuple)
+if is_empirical:
+    with st.spinner("Encoding corpus skill statements (one-time per session)…"):
+        index = _get_corpus_index(engine)
+    with st.spinner(f"Building empirical centroids (min {min_stmts} statements)…"):
+        matrix, codes, titles, n_stmts_per_code = _build_matrix_empirical(min_stmts, id(index))
+else:
+    corpus_codes_tuple: tuple = ()
+    if scope == "Corpus only":
+        with st.spinner("Finding ANZSCO occupations touched by your corpus…"):
+            corpus_codes_tuple = tuple(sim.corpus_anzsco_codes(engine))
+    with st.spinner(f"Building ESCO skill-centroid embeddings ({scope})…"):
+        matrix, codes, titles, n_stmts_per_code = _build_matrix_esco(scope, corpus_codes_tuple)
 
 if len(codes) < 3:
-    st.warning(
-        f"Only {len(codes)} occupations have skills behind them — not enough to "
-        "build a map. Match more skill statements (ESCO Alignment page) or switch "
-        "to 'All ANZSCO'."
-    )
+    if is_empirical:
+        st.warning(
+            f"Only {len(codes)} ANZSCO occupations have ≥{min_stmts} corpus "
+            "statements behind them — not enough to build a map. Lower the "
+            "Min-supporting-statements slider or match more skill statements."
+        )
+    else:
+        st.warning(
+            f"Only {len(codes)} occupations have skills behind them — not enough "
+            "to build a map. Match more skill statements (ESCO Alignment page) "
+            "or switch to 'All ANZSCO'."
+        )
     st.stop()
 
 with st.spinner(f"Projecting {len(codes)} occupations to {n_dim}D via UMAP…"):
@@ -106,9 +162,12 @@ df_plot = pd.DataFrame({
     "code": codes,
     "title": titles,
     "major_group": [c[:1] for c in codes],
+    "n_statements": n_stmts_per_code,
     **{f"x{i}": coords[:, i] for i in range(n_dim)},
 })
 df_plot["major_group_label"] = df_plot["major_group"].map(MAJOR_NAMES).fillna(df_plot["major_group"])
+
+basis_label = "empirical (corpus statements)" if is_empirical else "ESCO skills (taxonomic)"
 
 tab_map, tab_gap = st.tabs(["🗺️ Map", "🆚 Gap analysis"])
 
@@ -116,32 +175,51 @@ tab_map, tab_gap = st.tabs(["🗺️ Map", "🆚 Gap analysis"])
 # ── Map tab ───────────────────────────────────────────────────────────────────
 with tab_map:
     hover = {"code": True, "title": True, "major_group_label": False,
+             "n_statements": is_empirical,
              **{f"x{i}": False for i in range(n_dim)}}
+    chart_title = f"{len(codes)} ANZSCO occupations · basis: {basis_label}"
+    size_col = "n_statements" if is_empirical else None
     if n_dim == 2:
         fig = px.scatter(
             df_plot, x="x0", y="x1",
             color="major_group_label",
+            size=size_col,
+            size_max=point_size * 2 if size_col else None,
             hover_data=hover,
-            title=f"{len(codes)} ANZSCO occupations · {scope}",
+            title=chart_title,
             height=720,
         )
     else:
         fig = px.scatter_3d(
             df_plot, x="x0", y="x1", z="x2",
             color="major_group_label",
+            size=size_col,
+            size_max=point_size * 2 if size_col else None,
             hover_data=hover,
-            title=f"{len(codes)} ANZSCO occupations · {scope}",
+            title=chart_title,
             height=720,
         )
-    fig.update_traces(marker=dict(size=point_size, opacity=0.85))
+    if size_col is None:
+        fig.update_traces(marker=dict(size=point_size, opacity=0.85))
+    else:
+        fig.update_traces(marker=dict(opacity=0.85))
     fig.update_layout(legend_title_text="ANZSCO major group")
     st.plotly_chart(fig, use_container_width=True)
 
-    st.caption(
-        "**Reading the map**: UMAP layout — axes themselves are not meaningful, "
-        "but neighbours are. Trades cluster together, healthcare elsewhere, etc. "
-        "Outliers between clusters typically span multiple skill domains."
-    )
+    if is_empirical:
+        st.caption(
+            "**Reading the empirical map**: each point is the weighted centroid of your "
+            "actual `skill_statement` embeddings that map to that ANZSCO (weight = "
+            "esco_score × crosswalk_weight). Point size = number of supporting statements. "
+            "Closeness here means *your TPs teach these occupations with similar language* — "
+            "not necessarily that ESCO defines them as similar."
+        )
+    else:
+        st.caption(
+            "**Reading the ESCO map**: UMAP layout — axes themselves are not meaningful, "
+            "but neighbours are. Each point is the centroid of an ANZSCO's ESCO essential/"
+            "optional skill embeddings. Trades cluster together, healthcare elsewhere, etc."
+        )
 
     with st.expander("Find an occupation on the map"):
         q = st.text_input("Search", placeholder="e.g. plumber, nurse, accountant…",
