@@ -139,6 +139,10 @@ with st.sidebar:
 
 
 # ── Build profile ─────────────────────────────────────────────────────────────
+if not target_uoc and not target_qual:
+    st.info("Pick a scope in the sidebar to build a profile.")
+    st.stop()
+
 with st.spinner("Building profile…"):
     if use_clusters:
         if target_uoc:

@@ -43,13 +43,15 @@ def _statements_for_uoc(engine: Engine, uoc_code: str) -> pd.DataFrame:
 
 
 def _statements_for_qual(engine: Engine, qual_code: str) -> pd.DataFrame:
+    if not qual_code:
+        return pd.DataFrame()
     sql = text("""
         SELECT r.id, r.unit_code, r.element_title, r.skill_statement,
                r.esco_skill_uri, r.esco_skill_title, r.esco_skill_score,
                r.esco_occupation_uris, r.esco_occupation_titles,
-               qu.is_core
+               (qu.membership_type = 'core') AS is_core
           FROM rsd_skill_records r
-          JOIN qual_uoc_membership qu ON qu.uoc_code = r.unit_code
+          JOIN uoc_qual_memberships qu ON qu.uoc_code = r.unit_code
          WHERE qu.qual_code = :qc
            AND r.esco_skill_uri IS NOT NULL AND r.esco_skill_uri <> ''
     """)
