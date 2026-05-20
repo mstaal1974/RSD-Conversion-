@@ -265,12 +265,54 @@ with tab_gap:
     st.subheader("Pairwise gap analysis")
 
     label_options = [f"{c} — {t}" for c, t in zip(codes, titles)]
+    titles_lower = [t.lower() for t in titles]
+
+    def _filter(query: str) -> list[str]:
+        q = (query or "").strip().lower()
+        if not q:
+            return label_options
+        # Rank: title exact > startswith > substring on title or code
+        ranked = []
+        for code, title, t_low, label in zip(codes, titles, titles_lower, label_options):
+            if t_low == q:
+                ranked.append((0, label))
+            elif t_low.startswith(q):
+                ranked.append((1, label))
+            elif q in t_low or q in code.lower():
+                ranked.append((2, label))
+        ranked.sort()
+        return [l for _, l in ranked]
+
     col_a, col_b = st.columns(2)
     with col_a:
-        sel_a = st.selectbox("Occupation A", label_options, index=0, key="gap_a")
+        q_a = st.text_input(
+            "Search occupation A",
+            placeholder="e.g. electrician, nurse, plumber…",
+            key="gap_a_q",
+        )
+        opts_a = _filter(q_a)
+        if not opts_a:
+            st.warning(f"No matches for “{q_a}”.")
+            st.stop()
+        st.caption(f"{len(opts_a)} match{'es' if len(opts_a) != 1 else ''}")
+        sel_a = st.selectbox(
+            "Occupation A", opts_a, index=0, key="gap_a", label_visibility="collapsed",
+        )
     with col_b:
-        default_b = min(1, len(label_options) - 1)
-        sel_b = st.selectbox("Occupation B", label_options, index=default_b, key="gap_b")
+        q_b = st.text_input(
+            "Search occupation B",
+            placeholder="e.g. carpenter, accountant…",
+            key="gap_b_q",
+        )
+        opts_b = _filter(q_b)
+        if not opts_b:
+            st.warning(f"No matches for “{q_b}”.")
+            st.stop()
+        st.caption(f"{len(opts_b)} match{'es' if len(opts_b) != 1 else ''}")
+        default_b = min(1, len(opts_b) - 1) if len(opts_b) > 1 else 0
+        sel_b = st.selectbox(
+            "Occupation B", opts_b, index=default_b, key="gap_b", label_visibility="collapsed",
+        )
 
     code_a = codes[label_options.index(sel_a)]
     code_b = codes[label_options.index(sel_b)]
