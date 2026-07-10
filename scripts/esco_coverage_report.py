@@ -140,6 +140,28 @@ def _records_from_matcher(df) -> list[MatchRecord]:
     return recs
 
 
+def _records_from_reverse(df) -> list[MatchRecord]:
+    from core import esco_local
+    if not esco_local.is_available():
+        sys.exit("ESCO CSVs not found in data/esco/ — cannot run --reverse. "
+                 "See data/esco/README.md.")
+    statements = [_str(s) for s in df["skill_statement"].tolist()]
+    statements = [s for s in statements if s.strip()]
+    print(f"Reverse pass: scoring every ESCO skill against {len(statements):,} "
+          f"Australian statements with the local matcher…", file=sys.stderr)
+    matcher = esco_local.get_matcher()
+    scored = matcher.reverse_scan(statements)
+    recs: list[MatchRecord] = []
+    for sc in scored:
+        recs.append(MatchRecord(
+            statement=sc["best_statement"],   # nearest AU statement
+            esco_label=sc["esco_title"],       # the ESCO concept being tested
+            semantic=sc["best_semantic"],
+            margin=None,
+        ))
+    return recs
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -149,6 +171,11 @@ def main() -> None:
     p.add_argument("--rematch", action="store_true",
                    help="ignore stored scores; re-score with the local matcher "
                         "(adds the top1−top2 margin signal)")
+    p.add_argument("--reverse", action="store_true",
+                   help="reverse pass: for every ESCO skill, is there an "
+                        "Australian source statement? Reports the %% of ESCO "
+                        "with no Australian training source. Always re-embeds "
+                        "with the local matcher.")
     p.add_argument("--sem-none", type=float)
     p.add_argument("--sem-clean", type=float)
     p.add_argument("--lex-clean", type=float)
@@ -170,14 +197,19 @@ def main() -> None:
         sys.exit(f"source has no 'skill_statement' column (columns: "
                  f"{list(df.columns)}).")
 
-    have_scores = ("esco_skill_score" in df.columns
-                   and "esco_skill_title" in df.columns)
-    if args.rematch or not have_scores:
-        records = _records_from_matcher(df)
+    if args.reverse:
+        records = _records_from_reverse(df)
+        direction = "reverse"
     else:
-        records = _records_from_stored(df)
+        have_scores = ("esco_skill_score" in df.columns
+                       and "esco_skill_title" in df.columns)
+        if args.rematch or not have_scores:
+            records = _records_from_matcher(df)
+        else:
+            records = _records_from_stored(df)
+        direction = "forward"
 
-    summary = summarize(records, thresholds)
+    summary = summarize(records, thresholds, direction=direction)
 
     print()
     print(summary.render())
@@ -188,7 +220,7 @@ def main() -> None:
           + (f" & margin≥{thresholds.margin_clean}"
              if any(r.margin is not None for r in records) else "")
           + ".")
-    if not any(r.margin is not None for r in records):
+    if direction == "forward" and not any(r.margin is not None for r in records):
         print("Note: stored scores carry no top-2 margin; run --rematch to add "
               "the 'single ESCO skill' distinctiveness test.")
 

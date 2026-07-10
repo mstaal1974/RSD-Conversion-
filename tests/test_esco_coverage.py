@@ -92,6 +92,31 @@ def test_summary_render_shape():
     assert "found no credible match" in text
 
 
+def test_reverse_summary_labels_and_unmatched():
+    # 1 covered, 1 partial, 2 with no Australian source.
+    recs = [
+        MatchRecord("provide first aid to a casualty", "provide first aid", 0.80),
+        MatchRecord("loosely related statement", "operate machinery", 0.50),
+        MatchRecord("weak", "operate nuclear reactor", 0.20),
+        MatchRecord("weak", "trade carbon derivatives", 0.15),
+    ]
+    s = summarize(recs, direction="reverse")
+    assert s.direction == "reverse"
+    assert s.counts[NONE] == 2
+    assert abs(s.unmatched_pct() - 50.0) < 1e-9
+    text = s.render()
+    assert "Across the ESCO skill taxonomy (4 ESCO skills):" in text
+    assert "no Australian source" in text
+    assert "found 50.0% of ESCO unmatched" in text
+
+
+def test_forward_render_unchanged_by_direction_default():
+    recs = [MatchRecord("provide first aid", "provide first aid", 0.80)]
+    text = summarize(recs).render()  # default forward
+    assert "Across the canonical corpus" in text
+    assert "matched cleanly" in text
+
+
 def test_empty_corpus_is_zero_not_crash():
     s = summarize([])
     assert s.total == 0

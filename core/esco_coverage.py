@@ -123,6 +123,7 @@ CLEAN = "clean"
 PARTIAL = "partial"
 NONE = "none"
 
+# Forward (Australia → ESCO): "does this AU statement land on an ESCO skill".
 _LABELS = {
     CLEAN: "matched cleanly",
     PARTIAL: "matched partially",
@@ -135,6 +136,26 @@ _BLURBS = {
               "granularity or with meaningful scope differences"),
     NONE: "Australian certified capability with no European equivalent",
 }
+
+# Reverse (ESCO → Australia): "does any AU statement express this ESCO skill".
+_LABELS_REVERSE = {
+    CLEAN: "covered cleanly",
+    PARTIAL: "covered partially",
+    NONE: "no Australian source",
+}
+
+_BLURBS_REVERSE = {
+    CLEAN: "an Australian statement expresses this ESCO skill closely",
+    PARTIAL: ("an Australian statement is in the neighbourhood, but at a "
+              "different granularity or scope"),
+    NONE: "European skill with no Australian training source — a coverage gap",
+}
+
+_HEADERS = {
+    "forward": "Across the canonical corpus",
+    "reverse": "Across the ESCO skill taxonomy",
+}
+_UNITS = {"forward": "statements", "reverse": "ESCO skills"}
 
 
 @dataclass(frozen=True)
@@ -191,37 +212,64 @@ def classify_match(
 
 @dataclass
 class CoverageSummary:
-    """Aggregate three-tier coverage over a corpus."""
+    """Aggregate three-tier coverage over a corpus.
+
+    `direction` selects the vocabulary: 'forward' = Australia → ESCO (how well
+    AU statements land on ESCO), 'reverse' = ESCO → Australia (how much of ESCO
+    has an Australian training source).
+    """
 
     total: int = 0
     counts: dict[str, int] = field(
         default_factory=lambda: {CLEAN: 0, PARTIAL: 0, NONE: 0}
     )
     thresholds: CoverageThresholds = field(default_factory=CoverageThresholds)
+    direction: str = "forward"
 
     def pct(self, tier: str) -> float:
         if self.total == 0:
             return 0.0
         return 100.0 * self.counts.get(tier, 0) / self.total
 
+    def unmatched_pct(self) -> float:
+        """Percentage in the NONE tier — the headline coverage-gap number."""
+        return self.pct(NONE)
+
+    def _labels(self) -> dict:
+        return _LABELS_REVERSE if self.direction == "reverse" else _LABELS
+
+    def _blurbs(self) -> dict:
+        return _BLURBS_REVERSE if self.direction == "reverse" else _BLURBS
+
     def to_dict(self) -> dict:
         return {
+            "direction": self.direction,
             "total": self.total,
             "counts": dict(self.counts),
             "percent": {tier: round(self.pct(tier), 1)
                         for tier in (CLEAN, PARTIAL, NONE)},
+            "unmatched_pct": round(self.unmatched_pct(), 1),
             "thresholds": self.thresholds.__dict__,
         }
 
     def render(self) -> str:
         """Human-facing block in the exact shape curators asked for."""
-        lines = [f"Across the canonical corpus ({self.total:,} statements):", ""]
-        width = max(len(_LABELS[t]) for t in (CLEAN, PARTIAL, NONE))
+        labels, blurbs = self._labels(), self._blurbs()
+        header = _HEADERS.get(self.direction, _HEADERS["forward"])
+        unit = _UNITS.get(self.direction, _UNITS["forward"])
+        lines = [f"{header} ({self.total:,} {unit}):", ""]
+        width = max(len(labels[t]) for t in (CLEAN, PARTIAL, NONE))
         for tier in (CLEAN, PARTIAL, NONE):
-            label = _LABELS[tier].ljust(width)
+            label = labels[tier].ljust(width)
             lines.append(
-                f"  {self.pct(tier):5.1f}%  {label}  — {_BLURBS[tier]} "
+                f"  {self.pct(tier):5.1f}%  {label}  — {blurbs[tier]} "
                 f"({self.counts.get(tier, 0):,})"
+            )
+        if self.direction == "reverse":
+            lines.append("")
+            lines.append(
+                f"  → found {self.unmatched_pct():.1f}% of ESCO unmatched — "
+                "no Australian training source."
             )
         return "\n".join(lines)
 
@@ -259,10 +307,17 @@ def classify_records(
 def summarize(
     records: Sequence[MatchRecord],
     thresholds: CoverageThresholds | None = None,
+    direction: str = "forward",
 ) -> CoverageSummary:
-    """Aggregate a corpus of match records into a CoverageSummary."""
+    """Aggregate a corpus of match records into a CoverageSummary.
+
+    direction: 'forward' (Australia → ESCO) or 'reverse' (ESCO → Australia).
+    The classifier logic is identical either way — only the reporting
+    vocabulary changes — because a weak best-similarity means "no credible
+    counterpart" in both directions.
+    """
     t = thresholds or CoverageThresholds()
-    summary = CoverageSummary(thresholds=t)
+    summary = CoverageSummary(thresholds=t, direction=direction)
     for _rec, tier, _lex in classify_records(records, t):
         summary.total += 1
         summary.counts[tier] = summary.counts.get(tier, 0) + 1

@@ -308,6 +308,54 @@ class ESCOLocalMatcher:
             )
         return results
 
+    def reverse_scan(self, statements: list[str], batch_size: int = 256) -> list[dict]:
+        """Reverse (ESCO → Australia) coverage: for every ESCO skill, the best
+        similarity to any statement in the supplied corpus.
+
+        The forward pass answers "what is the nearest ESCO skill for this AU
+        statement". This answers the dual: "does any AU statement express this
+        ESCO skill". An ESCO skill whose best match is weak is a European
+        capability with no Australian training source — a coverage gap.
+
+        Statements are encoded in batches and reduced with a running max over
+        the ESCO axis, so peak memory is O(n_skills × batch_size), independent
+        of corpus size. Returns one dict per ESCO skill:
+          esco_uri, esco_title, best_semantic (top cosine to the corpus),
+          best_statement (the statement that achieved it).
+        """
+        assert self.embeddings is not None
+        E = self.embeddings                      # (K, dim), L2-normalized
+        K = E.shape[0]
+        best_sim = np.full(K, -1.0, dtype=np.float32)
+        best_idx = np.full(K, -1, dtype=np.int64)
+
+        normed = [_norm(s) if s else "" for s in statements]
+        idx_map = [i for i, s in enumerate(normed) if s]
+
+        for start in range(0, len(idx_map), batch_size):
+            chunk_ids = idx_map[start:start + batch_size]
+            S = self._encode([normed[i] for i in chunk_ids])   # (b, dim)
+            block = E @ S.T                                     # (K, b)
+            block_best = block.max(axis=1)                      # (K,)
+            block_arg = block.argmax(axis=1)                    # (K,) local
+            upd = block_best > best_sim
+            best_sim = np.where(upd, block_best, best_sim)
+            global_arg = np.asarray(chunk_ids, dtype=np.int64)[block_arg]
+            best_idx = np.where(upd, global_arg, best_idx)
+
+        results: list[dict] = []
+        for i in range(K):
+            srow = self.skills_df.iloc[i]
+            bi = int(best_idx[i])
+            sim = float(best_sim[i])
+            results.append(dict(
+                esco_uri=str(srow.get("conceptUri", "")),
+                esco_title=str(srow.get("preferredLabel", "")),
+                best_semantic=round(sim, 4) if sim >= 0.0 else 0.0,
+                best_statement=statements[bi] if bi >= 0 else "",
+            ))
+        return results
+
     def match_statement(
         self,
         statement: str,
