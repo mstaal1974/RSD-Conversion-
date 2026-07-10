@@ -61,10 +61,44 @@ if not DB_URL:
 @st.cache_resource
 def get_engine(url):
     from sqlalchemy import create_engine
-    return create_engine(url, pool_pre_ping=True)
+    return create_engine(
+        url,
+        pool_pre_ping=True,   # validate a pooled connection before handing it out
+        pool_recycle=600,     # drop connections older than 10 min — the Cloud Run
+                              # VPC connector silently kills idle TCP, which later
+                              # surfaces as "server closed the connection".
+        pool_size=5,
+        max_overflow=2,       # cap per-instance connections so we don't storm
+                              # Cloud SQL's max_connections under Cloud Run fan-out
+        connect_args={
+            # libpq TCP keepalives: keep idle connections alive through the VPC
+            # connector and detect a dead/restarting server quickly instead of
+            # hanging on connect.
+            "connect_timeout": 10,
+            "keepalives": 1,
+            "keepalives_idle": 30,
+            "keepalives_interval": 10,
+            "keepalives_count": 3,
+        },
+    )
 
 
 engine = get_engine(DB_URL)
+
+
+def _db_unavailable(err: Exception) -> None:
+    """Render a friendly, actionable message instead of a raw traceback."""
+    st.error(
+        "⚠️ **Couldn't reach the database (Cloud SQL).** This is usually "
+        "transient — the instance may be restarting, briefly at its "
+        "connection limit, or an idle connection was dropped by the VPC "
+        "connector."
+    )
+    st.caption(f"Details: `{err}`")
+    if st.button("🔄 Retry connection"):
+        st.cache_resource.clear()   # rebuild the engine / drop the poisoned pool
+        st.rerun()
+    st.stop()
 
 
 def load_progress(run_id=None, unit_prefix=""):
@@ -167,7 +201,10 @@ def ensure_esco_columns():
                 pass  # column already exists
 
 
-ensure_esco_columns()
+try:
+    ensure_esco_columns()
+except Exception as _db_err:
+    _db_unavailable(_db_err)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -351,7 +388,10 @@ with st.sidebar:
 # Progress header — always live from DB
 # ─────────────────────────────────────────────────────────────────────────────
 
-total_rows, done_rows = load_progress(sel_run_id, unit_filter)
+try:
+    total_rows, done_rows = load_progress(sel_run_id, unit_filter)
+except Exception as _db_err:
+    _db_unavailable(_db_err)
 todo_rows = total_rows - done_rows
 
 col_a, col_b, col_c = st.columns(3)
@@ -655,3 +695,128 @@ if done_rows > 0:
             "text/csv",
             use_container_width=True,
         )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Reverse coverage — ESCO skills with no Australian source statement
+# ─────────────────────────────────────────────────────────────────────────────
+
+st.divider()
+st.subheader("🔁 Reverse coverage — ESCO skills with no Australian source")
+st.caption(
+    "The forward pass scores each Australian statement against ESCO. This is "
+    "the dual: for **every** ESCO skill, is there any Australian statement that "
+    "expresses it? The unmatched share is European capability with no "
+    "Australian training source — a coverage-gap signal, not just taxonomy fit. "
+    "This is a full ~14k-skill scan over the whole corpus, so it runs only on "
+    "demand."
+)
+
+if not esco_local.is_available():
+    st.info("Reverse coverage needs the local ESCO index (data/esco/ CSVs + "
+            "model). Not available in this deployment.")
+else:
+    def _load_statements(run_id, unit_prefix) -> list[str]:
+        base_filter = " AND skill_statement IS NOT NULL AND skill_statement <> ''"
+        params: dict = {}
+        if run_id:
+            base_filter += " AND run_id = :run_id"
+            params["run_id"] = run_id
+        if unit_prefix:
+            base_filter += " AND unit_code ILIKE :up"
+            params["up"] = unit_prefix.upper() + "%"
+        with engine.connect() as conn:
+            rows = conn.execute(
+                text(f"SELECT skill_statement FROM rsd_skill_records "
+                     f"WHERE 1=1 {base_filter}"),
+                params,
+            ).fetchall()
+        return [r[0] for r in rows]
+
+    if st.button("▶ Run reverse coverage", key="run_reverse"):
+        from core.esco_coverage import (
+            CLEAN, PARTIAL, NONE, MatchRecord, classify_records, summarize,
+        )
+        try:
+            statements = _load_statements(sel_run_id, unit_filter)
+        except Exception as _db_err:
+            _db_unavailable(_db_err)
+
+        if not statements:
+            st.warning("No statements found for the current filters.")
+        else:
+            with st.spinner(
+                f"Scoring {len(statements):,} statements against every ESCO "
+                "skill… (first run builds the index)"
+            ):
+                matcher = esco_local.get_matcher()
+                scored = matcher.reverse_scan(statements)
+            records = [
+                MatchRecord(
+                    statement=sc["best_statement"],
+                    esco_label=sc["esco_title"],
+                    semantic=sc["best_semantic"],
+                    margin=None,
+                )
+                for sc in scored
+            ]
+            classified = classify_records(records)
+            rev = summarize(records, direction="reverse")
+            # Stash for display after the rerun-free block below.
+            st.session_state["reverse_summary"] = rev.to_dict()
+            st.session_state["reverse_rows"] = [
+                {
+                    "esco_skill_title": sc["esco_title"],
+                    "esco_skill_uri": sc["esco_uri"],
+                    "best_semantic": rec.semantic,
+                    "lexical": round(lex, 4),
+                    "tier": tier,
+                    "nearest_au_statement": sc["best_statement"],
+                }
+                for sc, (rec, tier, lex) in zip(scored, classified)
+            ]
+            st.session_state["reverse_n_stmts"] = len(statements)
+
+    rev_dict = st.session_state.get("reverse_summary")
+    if rev_dict:
+        pct = rev_dict["percent"]
+        rc1, rc2, rc3 = st.columns(3)
+        rc1.metric("Covered cleanly ✅", f"{pct[CLEAN]:.1f}%",
+                   help="An Australian statement expresses this ESCO skill closely.")
+        rc2.metric("Covered partially 〰️", f"{pct[PARTIAL]:.1f}%",
+                   help="In the neighbourhood, but at a different granularity or scope.")
+        rc3.metric("No Australian source 🚫", f"{pct[NONE]:.1f}%",
+                   help="European skill with no Australian training source — a coverage gap.")
+        st.markdown(
+            f"**→ Found {rev_dict['unmatched_pct']:.1f}% of ESCO "
+            f"({rev_dict['counts'][NONE]:,} of {rev_dict['total']:,} skills) "
+            "unmatched — no Australian training source.**"
+        )
+        st.caption(
+            f"Scan over {st.session_state.get('reverse_n_stmts', 0):,} Australian "
+            "statements. Note: the denominator is the full ESCO skill set, so "
+            "part of the unmatched tail is legitimately out of scope for "
+            "Australian VET (e.g. many language / EU-regulatory skills)."
+        )
+
+        rev_rows = st.session_state.get("reverse_rows", [])
+        if rev_rows:
+            df_rev = pd.DataFrame(rev_rows)
+            unmatched = (df_rev[df_rev["tier"] == NONE]
+                         .sort_values("best_semantic")
+                         .drop(columns=["tier"]))
+            st.markdown(f"**Unmatched ESCO skills ({len(unmatched):,})** — "
+                        "weakest coverage first")
+            st.dataframe(
+                unmatched[["esco_skill_title", "best_semantic",
+                           "nearest_au_statement"]],
+                use_container_width=True,
+                height=360,
+            )
+            st.download_button(
+                "⬇ Reverse coverage CSV (all ESCO skills)",
+                df_rev.to_csv(index=False).encode(),
+                "esco_reverse_coverage.csv",
+                "text/csv",
+                use_container_width=True,
+            )
