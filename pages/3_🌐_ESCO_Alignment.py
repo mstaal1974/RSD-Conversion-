@@ -61,10 +61,44 @@ if not DB_URL:
 @st.cache_resource
 def get_engine(url):
     from sqlalchemy import create_engine
-    return create_engine(url, pool_pre_ping=True)
+    return create_engine(
+        url,
+        pool_pre_ping=True,   # validate a pooled connection before handing it out
+        pool_recycle=600,     # drop connections older than 10 min — the Cloud Run
+                              # VPC connector silently kills idle TCP, which later
+                              # surfaces as "server closed the connection".
+        pool_size=5,
+        max_overflow=2,       # cap per-instance connections so we don't storm
+                              # Cloud SQL's max_connections under Cloud Run fan-out
+        connect_args={
+            # libpq TCP keepalives: keep idle connections alive through the VPC
+            # connector and detect a dead/restarting server quickly instead of
+            # hanging on connect.
+            "connect_timeout": 10,
+            "keepalives": 1,
+            "keepalives_idle": 30,
+            "keepalives_interval": 10,
+            "keepalives_count": 3,
+        },
+    )
 
 
 engine = get_engine(DB_URL)
+
+
+def _db_unavailable(err: Exception) -> None:
+    """Render a friendly, actionable message instead of a raw traceback."""
+    st.error(
+        "⚠️ **Couldn't reach the database (Cloud SQL).** This is usually "
+        "transient — the instance may be restarting, briefly at its "
+        "connection limit, or an idle connection was dropped by the VPC "
+        "connector."
+    )
+    st.caption(f"Details: `{err}`")
+    if st.button("🔄 Retry connection"):
+        st.cache_resource.clear()   # rebuild the engine / drop the poisoned pool
+        st.rerun()
+    st.stop()
 
 
 def load_progress(run_id=None, unit_prefix=""):
@@ -167,7 +201,10 @@ def ensure_esco_columns():
                 pass  # column already exists
 
 
-ensure_esco_columns()
+try:
+    ensure_esco_columns()
+except Exception as _db_err:
+    _db_unavailable(_db_err)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -351,7 +388,10 @@ with st.sidebar:
 # Progress header — always live from DB
 # ─────────────────────────────────────────────────────────────────────────────
 
-total_rows, done_rows = load_progress(sel_run_id, unit_filter)
+try:
+    total_rows, done_rows = load_progress(sel_run_id, unit_filter)
+except Exception as _db_err:
+    _db_unavailable(_db_err)
 todo_rows = total_rows - done_rows
 
 col_a, col_b, col_c = st.columns(3)
