@@ -260,6 +260,54 @@ class ESCOLocalMatcher:
                 break
         return essential, optional
 
+    def coverage_scan(self, statements: list[str]) -> list[dict]:
+        """Score statements for three-tier coverage classification.
+
+        Unlike `batch_match` (which resolves occupations for the top skill),
+        this returns just the evidence `core.esco_coverage` needs, including
+        the top-2 skills so the caller can measure the top-1/top-2 *margin*
+        (how distinctly the statement points at a single ESCO concept).
+
+        Returns one dict per input with keys:
+          esco_uri, esco_title, semantic (top-1 cosine), margin (top1−top2).
+        Empty statements yield zeros and empty labels.
+        """
+        assert self.embeddings is not None
+        empty = dict(esco_uri="", esco_title="", semantic=0.0, margin=0.0)
+        n = len(statements)
+        if n == 0:
+            return []
+
+        normed = [_norm(s) if s else "" for s in statements]
+        mask = np.array([bool(s) for s in normed])
+        results: list[dict] = [empty.copy() for _ in range(n)]
+        if not mask.any():
+            return results
+
+        non_empty_idx = np.where(mask)[0]
+        Q = self._encode([normed[i] for i in non_empty_idx])  # (m, dim)
+        sims = Q @ self.embeddings.T  # (m, n_skills)
+
+        for j, row_idx in enumerate(non_empty_idx):
+            row = sims[j]
+            # top-2 indices, descending
+            if len(row) >= 2:
+                part = np.argpartition(-row, 2)[:2]
+                top2 = part[np.argsort(-row[part])]
+            else:
+                top2 = np.argsort(-row)[:2]
+            top_i = int(top2[0])
+            top_score = float(row[top_i])
+            second = float(row[int(top2[1])]) if len(top2) > 1 else 0.0
+            srow = self.skills_df.iloc[top_i]
+            results[int(row_idx)] = dict(
+                esco_uri=str(srow.get("conceptUri", "")),
+                esco_title=str(srow.get("preferredLabel", "")),
+                semantic=round(top_score, 4),
+                margin=round(top_score - second, 4),
+            )
+        return results
+
     def match_statement(
         self,
         statement: str,
