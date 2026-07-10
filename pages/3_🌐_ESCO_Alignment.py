@@ -573,6 +573,45 @@ if done_rows > 0:
     df_results = load_results(sel_run_id, unit_filter)
 
     if not df_results.empty:
+        # ── Three-tier coverage summary ────────────────────────────────────
+        from core.esco_coverage import CLEAN, PARTIAL, NONE, MatchRecord, summarize
+
+        cov_records = [
+            MatchRecord(
+                statement=str(r.get("skill_statement", "") or ""),
+                esco_label=str(r.get("esco_skill_title", "") or ""),
+                semantic=float(r.get("esco_skill_score", 0.0) or 0.0),
+                margin=None,  # stored alignment keeps only the top skill
+            )
+            for _, r in df_results.iterrows()
+        ]
+        cov = summarize(cov_records)
+
+        st.markdown("**Coverage across the matched corpus**")
+        cc1, cc2, cc3 = st.columns(3)
+        cc1.metric(
+            "Matched cleanly ✅", f"{cov.pct(CLEAN):.1f}%",
+            help="High semantic AND lexical agreement to a single ESCO skill.",
+        )
+        cc2.metric(
+            "Matched partially 〰️", f"{cov.pct(PARTIAL):.1f}%",
+            help="A defensible ESCO neighbour exists, but at the wrong "
+                 "granularity or with meaningful scope differences.",
+        )
+        cc3.metric(
+            "No credible match 🚫", f"{cov.pct(NONE):.1f}%",
+            help="Australian certified capability with no European equivalent.",
+        )
+        st.caption(
+            f"Of {cov.total:,} matched statements — thresholds: "
+            f"none<{cov.thresholds.sem_none}, clean≥{cov.thresholds.sem_clean} "
+            f"& lexical≥{cov.thresholds.lex_clean} "
+            "(all-MiniLM-L6-v2 cosine). Run "
+            "`scripts/esco_coverage_report.py --rematch` for the full corpus "
+            "with the top-1/top-2 distinctiveness test."
+        )
+        st.divider()
+
         # ── Occupation frequency chart ─────────────────────────────────────
         all_occ = []
         for v in df_results["esco_occupation_titles"].dropna():
