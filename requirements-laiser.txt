@@ -1,0 +1,14 @@
+# Optional dependency — LAiSER cross-validation / multi-taxonomy enrichment.
+#
+# NOT part of the core app image (keeps the Cloud Run deploy lean). Install
+# only where the LAiSER validation feature runs:
+#
+#     pip install -r requirements.txt -r requirements-laiser.txt
+#
+# LAiSER is API-backed for the LLM step — set OPENAI_API_KEY or GEMINI_API_KEY.
+# It pulls faiss-cpu and google-genai on top of the torch/transformers/
+# sentence-transformers already in requirements.txt. BSD-3-Clause.
+#
+# Pinned to the 1.x line; LAiSER is pre-1.0-stable and still evolving, so
+# review its changelog before widening this.
+laiser>=1.0,<2.0
